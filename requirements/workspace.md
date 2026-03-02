@@ -247,7 +247,7 @@ When a source repo path does not exist on disk:
 
 ### Scenario: Working from code-repo referencing docs-repo
 
-```
+```text
 workspace/
 ├── docs-repo/
 │   ├── AGENTS.md              (cypilot_path = "cypilot")
@@ -273,7 +273,7 @@ Running `cypilot validate` from `code-repo/` will:
 
 ### Scenario: Super-root workspace
 
-```
+```text
 parent/
 ├── .cypilot-workspace.toml
 ├── frontend/

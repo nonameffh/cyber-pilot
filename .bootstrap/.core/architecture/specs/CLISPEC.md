@@ -49,7 +49,7 @@
 
 <!-- /toc -->
 
-**Version**: 1.0  
+**Version**: 1.2
 **Purpose**: Human and machine-readable format for CLI command documentation
 
 ---
@@ -468,7 +468,7 @@ Syntax highlighting:
 
 ## Workspace Commands (v1.2+)
 
-```
+```text
 COMMAND workspace-init
 SYNOPSIS: cypilot workspace-init [--root <dir>] [--output <path>] [--inline] [--dry-run]
 DESCRIPTION: Initialize a multi-repo workspace by scanning sibling directories for repos with adapters.
@@ -490,7 +490,7 @@ EXAMPLE:
 
 ---
 
-```
+```text
 COMMAND workspace-add
 SYNOPSIS: cypilot workspace-add --name <name> --path <path> [--role <role>] [--adapter <path>]
 DESCRIPTION: Add a source to an existing standalone .cypilot-workspace.toml.
@@ -511,7 +511,7 @@ EXAMPLE:
 
 ---
 
-```
+```text
 COMMAND workspace-add-inline
 SYNOPSIS: cypilot workspace-add-inline --name <name> --path <path> [--role <role>] [--adapter <path>]
 DESCRIPTION: Add a source inline to the current repo's config/core.toml workspace section.
@@ -532,7 +532,7 @@ EXAMPLE:
 
 ---
 
-```
+```text
 COMMAND workspace-info
 SYNOPSIS: cypilot workspace-info
 DESCRIPTION: Display workspace configuration, list sources, show per-source status.

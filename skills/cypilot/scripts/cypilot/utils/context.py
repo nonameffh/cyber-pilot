@@ -263,33 +263,16 @@ class WorkspaceContext:
 
     def get_all_artifact_ids(self) -> Set[str]:
         """Collect artifact IDs from all workspace sources (for cross-repo resolution)."""
-        from .document import scan_cpt_ids
-
         ids: Set[str] = set()
         # Primary source
         for art, _sys in self.primary.meta.iter_all_artifacts():
             art_path = self.resolve_artifact_path(art, self.primary.project_root)
             if art_path.exists():
-                try:
-                    for h in scan_cpt_ids(art_path):
-                        if h.get("type") == "definition" and h.get("id"):
-                            ids.add(str(h["id"]))
-                except Exception:
-                    continue
+                _scan_definition_ids(art_path, ids)
         # Remote sources (only when cross-repo traceability is enabled)
         if self.cross_repo:
             for sc in self.sources.values():
-                if not sc.reachable or sc.meta is None:
-                    continue
-                for art, _sys in sc.meta.iter_all_artifacts():
-                    art_path = (sc.path / art.path).resolve()
-                    if art_path.exists():
-                        try:
-                            for h in scan_cpt_ids(art_path):
-                                if h.get("type") == "definition" and h.get("id"):
-                                    ids.add(str(h["id"]))
-                        except Exception:
-                            continue
+                _collect_source_definition_ids(sc, ids)
         return ids
 
     @classmethod
@@ -307,56 +290,8 @@ class WorkspaceContext:
                 print(f"Warning: workspace config error: {ws_err}", file=sys.stderr)
             return None
 
-        sources: Dict[str, SourceContext] = {}
-        for name, src_entry in ws_cfg.sources.items():
-            resolved_path = ws_cfg.resolve_source_path(name)
-            if resolved_path is None or not resolved_path.is_dir():
-                sources[name] = SourceContext(
-                    name=name,
-                    path=resolved_path or Path(src_entry.path),
-                    role=src_entry.role,
-                    reachable=False,
-                    error=f"Source directory not found: {src_entry.path}",
-                )
-                continue
-
-            # Try to load adapter and meta for this source
-            adapter_dir = None
-            meta = None
-            source_kits: Dict[str, LoadedKit] = {}
-            reg_systems: Set[str] = set()
-            src_error = None
-
-            # v3: Use find_cypilot_directory() for automatic discovery
-            from .files import find_cypilot_directory
-
-            adapter_dir = find_cypilot_directory(resolved_path)
-
-            # Fallback: try explicit adapter path from workspace config
-            if adapter_dir is None and src_entry.adapter is not None:
-                adapter_path = (resolved_path / src_entry.adapter).resolve()
-                if adapter_path.is_dir() and (adapter_path / "AGENTS.md").exists():
-                    adapter_dir = adapter_path
-
-            if adapter_dir is not None:
-                m, err = load_artifacts_meta(adapter_dir)
-                if m and not err:
-                    meta = m
-                    reg_systems = m.get_all_system_prefixes()
-            elif src_entry.adapter is not None:
-                src_error = f"Adapter not found for source '{name}' at {resolved_path}"
-
-            sources[name] = SourceContext(
-                name=name,
-                path=resolved_path,
-                role=src_entry.role,
-                adapter_dir=adapter_dir,
-                meta=meta,
-                kits=source_kits,
-                registered_systems=reg_systems,
-                reachable=True,
-                error=src_error,
-            )
+        sources = {name: _load_source(name, src_entry, ws_cfg)
+                   for name, src_entry in ws_cfg.sources.items()}
 
         return cls(
             primary=primary_ctx,
@@ -365,6 +300,100 @@ class WorkspaceContext:
             cross_repo=ws_cfg.traceability.cross_repo,
             resolve_remote_ids=ws_cfg.traceability.resolve_remote_ids,
         )
+
+
+# ---------------------------------------------------------------------------
+# Helpers extracted for cognitive-complexity budget
+# ---------------------------------------------------------------------------
+
+
+def _scan_definition_ids(artifact_path: Path, ids: Set[str]) -> None:
+    """Scan an artifact file and add definition IDs to the set."""
+    from .document import scan_cpt_ids
+
+    try:
+        for h in scan_cpt_ids(artifact_path):
+            if h.get("type") == "definition" and h.get("id"):
+                ids.add(str(h["id"]))
+    except Exception:
+        pass
+
+
+def _collect_source_definition_ids(sc: "SourceContext", ids: Set[str]) -> None:
+    """Collect definition IDs from a single reachable source's artifacts."""
+    if not sc.reachable or sc.meta is None:
+        return
+    for art, _sys in sc.meta.iter_all_artifacts():
+        art_path = (sc.path / art.path).resolve()
+        if art_path.exists():
+            _scan_definition_ids(art_path, ids)
+
+
+def _load_source(name: str, src_entry: object, ws_cfg: object) -> "SourceContext":
+    """Load a single workspace source, returning an unreachable stub or full context."""
+    resolved_path = ws_cfg.resolve_source_path(name)
+    if resolved_path is None or not resolved_path.is_dir():
+        return SourceContext(
+            name=name,
+            path=resolved_path or Path(src_entry.path),
+            role=src_entry.role,
+            reachable=False,
+            error=f"Source directory not found: {src_entry.path}",
+        )
+    return _load_reachable_source(name, src_entry, resolved_path)
+
+
+def _load_reachable_source(name: str, src_entry: object, resolved_path: Path) -> "SourceContext":
+    """Load adapter and metadata for a reachable workspace source."""
+    from .files import find_cypilot_directory
+
+    adapter_dir = find_cypilot_directory(resolved_path)
+
+    # Fallback: try explicit adapter path from workspace config
+    if adapter_dir is None and src_entry.adapter is not None:
+        adapter_path = (resolved_path / src_entry.adapter).resolve()
+        if adapter_path.is_dir() and (adapter_path / "AGENTS.md").exists():
+            adapter_dir = adapter_path
+
+    meta = None
+    reg_systems: Set[str] = set()
+    src_error = None
+
+    if adapter_dir is not None:
+        m, err = load_artifacts_meta(adapter_dir)
+        if m and not err:
+            meta = m
+            reg_systems = m.get_all_system_prefixes()
+    elif src_entry.adapter is not None:
+        src_error = f"Adapter not found for source '{name}' at {resolved_path}"
+
+    return SourceContext(
+        name=name,
+        path=resolved_path,
+        role=src_entry.role,
+        adapter_dir=adapter_dir,
+        meta=meta,
+        kits={},
+        registered_systems=reg_systems,
+        reachable=True,
+        error=src_error,
+    )
+
+
+def _collect_remote_artifacts(
+    ctx: "WorkspaceContext",
+    artifacts: List[Tuple[Path, str]],
+    path_to_source: Dict[str, str],
+) -> None:
+    """Append artifacts from reachable remote workspace sources."""
+    for sc in ctx.sources.values():
+        if not sc.reachable or sc.meta is None:
+            continue
+        for art, _sys in sc.meta.iter_all_artifacts():
+            art_path = (sc.path / art.path).resolve()
+            if art_path.exists():
+                artifacts.append((art_path, str(art.kind)))
+            path_to_source[str(art_path)] = sc.name
 
 
 # Global context instance (set by CLI on startup)
@@ -419,12 +448,11 @@ def collect_artifacts_to_scan(
     """
     artifacts: List[Tuple[Path, str]] = []
     path_to_source: Dict[str, str] = {}
-    meta = ctx.meta
     project_root = ctx.project_root
 
     # Primary artifacts
     is_ws = isinstance(ctx, WorkspaceContext)
-    for artifact_meta, _system_node in meta.iter_all_artifacts():
+    for artifact_meta, _system_node in ctx.meta.iter_all_artifacts():
         if is_ws:
             artifact_path = ctx.resolve_artifact_path(artifact_meta, project_root)
         else:
@@ -434,14 +462,7 @@ def collect_artifacts_to_scan(
 
     # Remote source artifacts (workspace mode with cross-repo enabled)
     if is_ws and ctx.cross_repo:
-        for sc in ctx.sources.values():
-            if not sc.reachable or sc.meta is None:
-                continue
-            for art, _sys in sc.meta.iter_all_artifacts():
-                art_path = (sc.path / art.path).resolve()
-                if art_path.exists():
-                    artifacts.append((art_path, str(art.kind)))
-                path_to_source[str(art_path)] = sc.name
+        _collect_remote_artifacts(ctx, artifacts, path_to_source)
 
     return artifacts, path_to_source
 

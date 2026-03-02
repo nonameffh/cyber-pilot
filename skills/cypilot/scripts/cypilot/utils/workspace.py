@@ -28,10 +28,8 @@ class SourceEntry:
     def from_dict(cls, name: str, data: dict) -> "SourceEntry":
         raw_path = str((data or {}).get("path", "")).strip()
         raw_adapter = (data or {}).get("adapter", None)
-        adapter = str(raw_adapter).strip() if isinstance(raw_adapter, str) else None
         # Omitted key means no adapter (TOML has no null)
-        if raw_adapter is None:
-            adapter = None
+        adapter = str(raw_adapter).strip() if isinstance(raw_adapter, str) else None
         raw_role = str((data or {}).get("role", "full")).strip().lower()
         role = raw_role if raw_role in VALID_ROLES else "full"
         return cls(name=name, path=raw_path, adapter=adapter, role=role)
@@ -267,9 +265,9 @@ def find_workspace_config(project_root: Path) -> Tuple[Optional[WorkspaceConfig]
 
 
 __all__ = [
+    "VALID_ROLES",
     "SourceEntry",
     "TraceabilityConfig",
     "WorkspaceConfig",
     "find_workspace_config",
-    "VALID_ROLES",
 ]
