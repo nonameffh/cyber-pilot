@@ -289,26 +289,20 @@ See the [SDLC Kit README](kits/sdlc/README.md) for the full pipeline overview, a
 
 ## Contributing
 
-We welcome contributions to **Cypilot**.
+We welcome contributions! See **[CONTRIBUTING.md](CONTRIBUTING.md)** for the full guide covering:
 
-**How to contribute**:
+- **Development setup** and self-hosted bootstrap architecture
+- **Versioning** — where versions live and how to bump them
+- **DCO requirement** — all commits must be signed off (`git commit -s`)
+- **CI pipeline** — Makefile targets and GitHub Actions checks
+- **Pull request process** — what must pass before merge
 
-1. **Report issues** — use GitHub Issues for bugs, spec requests, or questions
-2. **Submit pull requests** — fork the repository, create a branch, submit PR with description
-3. **Follow Cypilot methodology** — use Cypilot workflows when making changes to Cypilot itself
-4. **Update documentation** — include doc updates for any user-facing changes
-
-**Guidelines**:
-- Python stdlib only — zero third-party dependencies
-- Follow existing code style and conventions
-- Maintain backward compatibility
-- Add tests for new functionality
-
-**Development setup**:
+Quick start:
 ```bash
 git clone https://github.com/cyberfabric/cyber-pilot.git
 cd cyber-pilot
-make test-coverage
-make self-check
-make validate
+make install-proxy   # install cpt CLI from local source
+make update          # sync .bootstrap/ from source
+make test            # run tests
+make validate        # validate artifacts
 ```

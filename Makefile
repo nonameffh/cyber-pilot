@@ -1,5 +1,5 @@
 # @cpt-algo:cpt-cypilot-spec-init-structure-change-infrastructure:p1
-.PHONY: test test-verbose test-quick test-coverage validate validate-examples validate-feature validate-code validate-code-feature self-check vulture vulture-ci install install-pipx install-proxy clean help check-pytest check-pytest-cov check-pipx check-vulture update
+.PHONY: test test-verbose test-quick test-coverage validate validate-examples validate-feature validate-code validate-code-feature self-check vulture vulture-ci install install-pipx install-proxy clean help check-pytest check-pytest-cov check-pipx check-vulture check-versions update
 
 PYTHON ?= python3
 PIPX ?= pipx
@@ -21,6 +21,7 @@ help:
 	@echo "  make validate-examples             - Validate requirements examples under examples/requirements"
 	@echo "  make validate                      - Validate core methodology spec"
 	@echo "  make self-check                    - Validate SDLC examples against their templates"
+	@echo "  make check-versions                - Check version consistency across components"
 	@echo "  make vulture                       - Scan python code for dead code (report only, does not fail)"
 	@echo "  make vulture-ci                    - Scan python code for dead code (fails if findings)"
 	@echo "  make install                       - Install Python dependencies"
@@ -113,6 +114,10 @@ vulture: check-vulture
 vulture-ci: check-vulture
 	@echo "Running vulture dead-code scan (CI mode, fails if findings)..."
 	$(VULTURE_PIPX) skills/cypilot/scripts/cypilot --min-confidence $(VULTURE_MIN_CONF)
+
+# Check version consistency
+check-versions:
+	@$(PYTHON) scripts/check_versions.py
 
 # Update .bootstrap from local source
 update:

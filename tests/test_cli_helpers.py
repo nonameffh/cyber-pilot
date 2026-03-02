@@ -253,9 +253,9 @@ class TestCliCommandCoverage(unittest.TestCase):
                     rc = cypilot_cli.main(["init", "--project-root", str(root), "--yes", "--dry-run"])
         self.assertEqual(rc, 0)
 
-    def test_main_missing_subcommand_returns_error(self):
+    def test_main_missing_subcommand_shows_help(self):
         rc = cypilot_cli.main([])
-        self.assertEqual(rc, 1)
+        self.assertEqual(rc, 0)
 
     def test_main_unknown_command_returns_error(self):
         rc = cypilot_cli.main(["does-not-exist"])

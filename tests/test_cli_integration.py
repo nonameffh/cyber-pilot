@@ -1793,15 +1793,13 @@ class TestCLIErrorHandling(unittest.TestCase):
         self.assertIn("Unknown command", output["message"])
 
     def test_empty_command(self):
-        """Test CLI with no command."""
+        """Test CLI with no command shows help."""
         stdout = io.StringIO()
         with redirect_stdout(stdout):
             exit_code = main([])
 
-        self.assertNotEqual(exit_code, 0)
-        output = json.loads(stdout.getvalue())
-        self.assertEqual(output["status"], "ERROR")
-        self.assertIn("Missing subcommand", output["message"])
+        self.assertEqual(exit_code, 0)
+        self.assertIn("usage: cypilot", stdout.getvalue())
 
 
 class TestCLIBackwardCompatibility(unittest.TestCase):
