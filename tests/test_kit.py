@@ -908,6 +908,146 @@ class TestMigrateKit(unittest.TestCase):
             migrate_kit("sdlc", ref_dir, config_kit, interactive=False)
             self.assertFalse((ref_dir / ".prev").exists())
 
+    def test_interactive_approve_updates(self):
+        """Interactive mode: user says 'y' → changes applied."""
+        from cypilot.commands.kit import migrate_kit
+        from unittest.mock import patch
+        with TemporaryDirectory() as td:
+            _, _, ref_dir, config_kit, _ = self._setup_kit(Path(td))
+            with patch("builtins.input", return_value="y"):
+                result = migrate_kit("sdlc", ref_dir, config_kit, interactive=True)
+            bp = result["blueprints"][0]
+            self.assertEqual(bp["action"], "merged")
+            user_text = (config_kit / "blueprints" / "FEAT.md").read_text()
+            self.assertIn("Feature v2", user_text)
+
+    def test_interactive_decline_updates(self):
+        """Interactive mode: user says 'N' → changes NOT applied."""
+        from cypilot.commands.kit import migrate_kit
+        from unittest.mock import patch
+        with TemporaryDirectory() as td:
+            _, _, ref_dir, config_kit, _ = self._setup_kit(Path(td))
+            with patch("builtins.input", return_value="n"):
+                result = migrate_kit("sdlc", ref_dir, config_kit, interactive=True)
+            bp = result["blueprints"][0]
+            self.assertEqual(bp["action"], "declined")
+            user_text = (config_kit / "blueprints" / "FEAT.md").read_text()
+            self.assertIn("Feature v1", user_text)
+
+    def test_interactive_all_auto_approves(self):
+        """Interactive mode: user says 'all' → all files auto-approved."""
+        from cypilot.commands.kit import migrate_kit
+        from unittest.mock import patch
+        with TemporaryDirectory() as td:
+            _, _, ref_dir, config_kit, _ = self._setup_kit(Path(td))
+            with patch("builtins.input", return_value="all"):
+                result = migrate_kit("sdlc", ref_dir, config_kit, interactive=True)
+            bp = result["blueprints"][0]
+            self.assertEqual(bp["action"], "merged")
+
+    def test_interactive_approve_overwrites_customized(self):
+        """Interactive mode: user says 'y' → customized markers overwritten."""
+        from cypilot.commands.kit import migrate_kit
+        from unittest.mock import patch
+        with TemporaryDirectory() as td:
+            _, _, ref_dir, config_kit, _ = self._setup_kit(
+                Path(td), user_heading="My Custom",
+            )
+            with patch("builtins.input", return_value="y"):
+                result = migrate_kit("sdlc", ref_dir, config_kit, interactive=True)
+            bp = result["blueprints"][0]
+            self.assertEqual(bp["action"], "merged")
+            user_text = (config_kit / "blueprints" / "FEAT.md").read_text()
+            # Customized marker overwritten with reference
+            self.assertIn("Feature v2", user_text)
+            self.assertNotIn("My Custom", user_text)
+
+    def test_interactive_ref_removed_approved(self):
+        """Interactive mode: marker removed from ref, user approves → removed from config."""
+        from cypilot.commands.kit import migrate_kit
+        from unittest.mock import patch
+        from cypilot.utils import toml_utils
+        with TemporaryDirectory() as td:
+            td_p = Path(td)
+            root = td_p / "proj"
+            adapter = _bootstrap_project(root)
+
+            bp_v1 = (
+                '`@cpt:blueprint`\n```toml\nkit = "sdlc"\nartifact = "X"\n```\n`@/cpt:blueprint`\n\n'
+                '`@cpt:heading:title`\n```toml\nid = "title"\nlevel = 1\ntemplate = "Title"\n```\n`@/cpt:heading:title`\n'
+                '`@cpt:check:old`\n```toml\nid = "old"\n```\nOld check\n`@/cpt:check:old`\n'
+            )
+            bp_v2 = (
+                '`@cpt:blueprint`\n```toml\nkit = "sdlc"\nartifact = "X"\n```\n`@/cpt:blueprint`\n\n'
+                '`@cpt:heading:title`\n```toml\nid = "title"\nlevel = 1\ntemplate = "Title"\n```\n`@/cpt:heading:title`\n'
+            )
+            # .prev/ has v1 (with check:old), new ref has v2 (without)
+            ref_dir = adapter / "kits" / "sdlc"
+            ref_bp = ref_dir / "blueprints"
+            ref_bp.mkdir(parents=True)
+            (ref_bp / "X.md").write_text(bp_v2, encoding="utf-8")
+            toml_utils.dump({"version": 2}, ref_dir / "conf.toml")
+
+            prev_bp = ref_dir / ".prev" / "blueprints"
+            prev_bp.mkdir(parents=True)
+            (prev_bp / "X.md").write_text(bp_v1, encoding="utf-8")
+
+            config_kit = adapter / "config" / "kits" / "sdlc"
+            user_bp = config_kit / "blueprints"
+            user_bp.mkdir(parents=True)
+            (user_bp / "X.md").write_text(bp_v1, encoding="utf-8")
+            toml_utils.dump({"version": 1}, config_kit / "conf.toml")
+
+            with patch("builtins.input", return_value="y"):
+                result = migrate_kit("sdlc", ref_dir, config_kit, interactive=True)
+            bp = result["blueprints"][0]
+            self.assertEqual(bp["action"], "merged")
+            user_text = (config_kit / "blueprints" / "X.md").read_text()
+            self.assertNotIn("check:old", user_text)
+            self.assertNotIn("Old check", user_text)
+
+    def test_interactive_deleted_by_user_approved(self):
+        """Interactive mode: user deleted marker, approves → restored from ref."""
+        from cypilot.commands.kit import migrate_kit
+        from unittest.mock import patch
+        from cypilot.utils import toml_utils
+        with TemporaryDirectory() as td:
+            td_p = Path(td)
+            root = td_p / "proj"
+            adapter = _bootstrap_project(root)
+
+            bp_full = (
+                '`@cpt:blueprint`\n```toml\nkit = "sdlc"\nartifact = "X"\n```\n`@/cpt:blueprint`\n\n'
+                '`@cpt:heading:title`\n```toml\nid = "title"\nlevel = 1\ntemplate = "Title"\n```\n`@/cpt:heading:title`\n'
+            )
+            bp_partial = (
+                '`@cpt:blueprint`\n```toml\nkit = "sdlc"\nartifact = "X"\n```\n`@/cpt:blueprint`\n\n'
+            )
+            ref_dir = adapter / "kits" / "sdlc"
+            ref_bp = ref_dir / "blueprints"
+            ref_bp.mkdir(parents=True)
+            (ref_bp / "X.md").write_text(bp_full, encoding="utf-8")
+            toml_utils.dump({"version": 2}, ref_dir / "conf.toml")
+
+            prev_bp = ref_dir / ".prev" / "blueprints"
+            prev_bp.mkdir(parents=True)
+            (prev_bp / "X.md").write_text(bp_full, encoding="utf-8")
+
+            config_kit = adapter / "config" / "kits" / "sdlc"
+            user_bp = config_kit / "blueprints"
+            user_bp.mkdir(parents=True)
+            # User deleted heading:title
+            (user_bp / "X.md").write_text(bp_partial, encoding="utf-8")
+            toml_utils.dump({"version": 1}, config_kit / "conf.toml")
+
+            with patch("builtins.input", return_value="y"):
+                result = migrate_kit("sdlc", ref_dir, config_kit, interactive=True)
+            bp = result["blueprints"][0]
+            self.assertEqual(bp["action"], "merged")
+            user_text = (config_kit / "blueprints" / "X.md").read_text()
+            # Deleted marker restored
+            self.assertIn("heading:title", user_text)
+
     def test_missing_ref_blueprint_file(self):
         from cypilot.commands.kit import migrate_kit
         from cypilot.utils import toml_utils
@@ -1622,6 +1762,28 @@ class TestShowMarkerDiff(unittest.TestCase):
         self.assertIn("yours (heading:title)", output)
         self.assertIn("reference (heading:title)", output)
 
+    def test_show_content_red(self):
+        from cypilot.commands.kit import _show_marker_content
+        import io
+        from unittest.mock import patch
+        buf = io.StringIO()
+        with patch("sys.stderr", buf):
+            _show_marker_content("line1\nline2\n", color="red")
+        output = buf.getvalue()
+        self.assertIn("line1", output)
+        self.assertIn("\033[31m", output)
+
+    def test_show_content_green(self):
+        from cypilot.commands.kit import _show_marker_content
+        import io
+        from unittest.mock import patch
+        buf = io.StringIO()
+        with patch("sys.stderr", buf):
+            _show_marker_content("added\n", color="green")
+        output = buf.getvalue()
+        self.assertIn("added", output)
+        self.assertIn("\033[32m", output)
+
     def test_no_diff_when_identical(self):
         from cypilot.commands.kit import _show_marker_diff
         import io
@@ -1641,6 +1803,99 @@ class TestShowMarkerDiff(unittest.TestCase):
         user_raw, new_raw = report["skipped_details"]["heading:t"]
         self.assertIn("My edit", user_raw)
         self.assertIn("Updated", new_raw)
+
+
+# =========================================================================
+# Deleted marker detection and restore
+# =========================================================================
+
+class TestDeletedMarkers(unittest.TestCase):
+    """Detect markers user deleted and optionally restore them."""
+
+    def test_deleted_marker_detected(self):
+        from cypilot.commands.kit import _three_way_merge_blueprint
+        old = (
+            '`@cpt:heading:a`\n```toml\nid = "a"\n```\nA\n`@/cpt:heading:a`\n'
+            '`@cpt:heading:b`\n```toml\nid = "b"\n```\nB\n`@/cpt:heading:b`\n'
+        )
+        new = old  # reference unchanged
+        user = '`@cpt:heading:a`\n```toml\nid = "a"\n```\nA\n`@/cpt:heading:a`\n'
+        # User deleted heading:b
+        _, report = _three_way_merge_blueprint(old, new, user)
+        self.assertIn("heading:b", report["deleted"])
+        self.assertIn("heading:b", report["deleted_details"])
+
+    def test_deleted_not_restored_by_default(self):
+        from cypilot.commands.kit import _three_way_merge_blueprint
+        old = (
+            '`@cpt:heading:a`\n```toml\nid = "a"\n```\nA\n`@/cpt:heading:a`\n'
+            '`@cpt:heading:b`\n```toml\nid = "b"\n```\nB\n`@/cpt:heading:b`\n'
+        )
+        new = old
+        user = '`@cpt:heading:a`\n```toml\nid = "a"\n```\nA\n`@/cpt:heading:a`\n'
+        merged, report = _three_way_merge_blueprint(old, new, user)
+        self.assertNotIn("heading:b", merged)
+        self.assertEqual(report["restored"], [])
+
+    def test_restore_keys_brings_back_deleted(self):
+        from cypilot.commands.kit import _three_way_merge_blueprint
+        old = (
+            '`@cpt:heading:a`\n```toml\nid = "a"\n```\nA\n`@/cpt:heading:a`\n'
+            '`@cpt:heading:b`\n```toml\nid = "b"\n```\nB\n`@/cpt:heading:b`\n'
+        )
+        new = old
+        user = '`@cpt:heading:a`\n```toml\nid = "a"\n```\nA\n`@/cpt:heading:a`\n'
+        merged, report = _three_way_merge_blueprint(
+            old, new, user, restore_keys=frozenset(["heading:b"]),
+        )
+        self.assertIn("heading:b", merged)
+        self.assertIn("heading:b", report["restored"])
+        self.assertNotIn("heading:b", report["deleted"])
+
+    def test_ref_removed_detected(self):
+        """Marker removed from reference but still in user config → ref_removed."""
+        from cypilot.commands.kit import _three_way_merge_blueprint
+        old = (
+            '`@cpt:heading:a`\n```toml\nid = "a"\n```\nA\n`@/cpt:heading:a`\n'
+            '`@cpt:heading:b`\n```toml\nid = "b"\n```\nB\n`@/cpt:heading:b`\n'
+        )
+        new = '`@cpt:heading:a`\n```toml\nid = "a"\n```\nA\n`@/cpt:heading:a`\n'
+        user = old  # user still has both
+        merged, report = _three_way_merge_blueprint(old, new, user)
+        self.assertIn("heading:b", report["ref_removed"])
+        # By default, kept in merged output
+        self.assertIn("heading:b", merged)
+
+    def test_ref_removed_with_remove_keys(self):
+        """remove_keys strips ref-removed markers from output."""
+        from cypilot.commands.kit import _three_way_merge_blueprint
+        old = (
+            '`@cpt:heading:a`\n```toml\nid = "a"\n```\nA\n`@/cpt:heading:a`\n'
+            '`@cpt:heading:b`\n```toml\nid = "b"\n```\nB\n`@/cpt:heading:b`\n'
+        )
+        new = '`@cpt:heading:a`\n```toml\nid = "a"\n```\nA\n`@/cpt:heading:a`\n'
+        user = old
+        merged, report = _three_way_merge_blueprint(
+            old, new, user, remove_keys=frozenset(["heading:b"]),
+        )
+        self.assertNotIn("heading:b", merged)
+        self.assertIn("heading:b", report["removed"])
+        self.assertNotIn("heading:b", report["ref_removed"])
+
+    def test_new_marker_not_in_deleted(self):
+        """Truly new markers (not in old_ref) should NOT appear in deleted."""
+        from cypilot.commands.kit import _three_way_merge_blueprint
+        old = '`@cpt:heading:a`\n```toml\nid = "a"\n```\nA\n`@/cpt:heading:a`\n'
+        new = (
+            '`@cpt:heading:a`\n```toml\nid = "a"\n```\nA\n`@/cpt:heading:a`\n'
+            '`@cpt:heading:b`\n```toml\nid = "b"\n```\nB\n`@/cpt:heading:b`\n'
+        )
+        user = '`@cpt:heading:a`\n```toml\nid = "a"\n```\nA\n`@/cpt:heading:a`\n'
+        merged, report = _three_way_merge_blueprint(old, new, user)
+        # heading:b is NEW, not deleted by user
+        self.assertNotIn("heading:b", report["deleted"])
+        self.assertIn("heading:b", report["inserted"])
+        self.assertIn("heading:b", merged)
 
 
 class TestReferenceGuidedNormalization(unittest.TestCase):
