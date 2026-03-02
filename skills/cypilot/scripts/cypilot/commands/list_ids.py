@@ -65,7 +65,7 @@ def cmd_list_ids(argv: List[str]) -> int:
             return 1
     else:
         # No artifact specified - use global context from cwd
-        from ..utils.context import get_context
+        from ..utils.context import get_context, collect_artifacts_to_scan, WorkspaceContext
 
         ctx = get_context()
         if not ctx:
@@ -74,35 +74,27 @@ def cmd_list_ids(argv: List[str]) -> int:
 
         meta = ctx.meta
         project_root = ctx.project_root
-
-        # Workspace: also scan artifacts from remote sources
-        from ..utils.context import WorkspaceContext
         is_workspace = isinstance(ctx, WorkspaceContext)
 
         if args.source and not is_workspace:
             import sys
             print(f"Warning: --source filter '{args.source}' ignored (not in workspace mode)", file=sys.stderr)
 
-        # Scan primary artifacts (skip when --source targets a specific remote source)
-        if not (args.source and is_workspace):
-            for artifact_meta, _system_node in meta.iter_all_artifacts():
-                if is_workspace:
-                    artifact_path = ctx.resolve_artifact_path(artifact_meta, project_root)
-                else:
-                    artifact_path = (project_root / artifact_meta.path).resolve()
-                if artifact_path.exists():
-                    artifacts_to_scan.append((artifact_path, str(artifact_meta.kind)))
-
-        if is_workspace and ctx.cross_repo:
-            for sc in ctx.sources.values():
-                if not sc.reachable or sc.meta is None:
-                    continue
-                if args.source and sc.name != args.source:
-                    continue
-                for art, _sys in sc.meta.iter_all_artifacts():
-                    art_path = (sc.path / art.path).resolve()
-                    if art_path.exists():
-                        artifacts_to_scan.append((art_path, str(art.kind)))
+        if not args.source:
+            # No source filter — use shared collection helper
+            artifacts_to_scan, _ = collect_artifacts_to_scan(ctx)
+        else:
+            # --source filter: skip primary, scan only matching remote source
+            if is_workspace and ctx.cross_repo:
+                for sc in ctx.sources.values():
+                    if not sc.reachable or sc.meta is None:
+                        continue
+                    if sc.name != args.source:
+                        continue
+                    for art, _sys in sc.meta.iter_all_artifacts():
+                        art_path = (sc.path / art.path).resolve()
+                        if art_path.exists():
+                            artifacts_to_scan.append((art_path, str(art.kind)))
 
         if not artifacts_to_scan:
             print(json.dumps({"count": 0, "artifacts_scanned": 0, "ids": []}, indent=None, ensure_ascii=False))

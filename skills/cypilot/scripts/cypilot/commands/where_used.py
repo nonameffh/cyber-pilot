@@ -55,36 +55,14 @@ def cmd_where_used(argv: List[str]) -> int:
             return 1
     else:
         # Use global context
-        from ..utils.context import get_context
+        from ..utils.context import get_context, collect_artifacts_to_scan
 
         ctx = get_context()
         if not ctx:
             print(json.dumps({"status": "ERROR", "message": "Cypilot not initialized. Run 'cypilot init' first."}, indent=None, ensure_ascii=False))
             return 1
 
-        meta = ctx.meta
-        project_root = ctx.project_root
-
-        # Scan all Cypilot artifacts
-        from ..utils.context import WorkspaceContext
-        for artifact_meta, _system_node in meta.iter_all_artifacts():
-            if isinstance(ctx, WorkspaceContext):
-                artifact_path = ctx.resolve_artifact_path(artifact_meta, project_root)
-            else:
-                artifact_path = (project_root / artifact_meta.path).resolve()
-            if artifact_path.exists():
-                artifacts_to_scan.append((artifact_path, str(artifact_meta.kind)))
-
-        # Workspace: also scan artifacts from remote sources
-        if isinstance(ctx, WorkspaceContext) and ctx.cross_repo:
-            for sc in ctx.sources.values():
-                if not sc.reachable or sc.meta is None:
-                    continue
-                for art, _sys in sc.meta.iter_all_artifacts():
-                    art_path = (sc.path / art.path).resolve()
-                    if art_path.exists():
-                        artifacts_to_scan.append((art_path, str(art.kind)))
-                    path_to_source[str(art_path)] = sc.name
+        artifacts_to_scan, path_to_source = collect_artifacts_to_scan(ctx)
 
     if not artifacts_to_scan:
         print(json.dumps({

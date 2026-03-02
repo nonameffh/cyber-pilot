@@ -197,8 +197,9 @@ class TestWorkspaceConfig:
             assert resolved == (Path(tmpdir) / "sub" / "repo").resolve()
 
     def test_resolve_source_path_unknown(self):
-        cfg = WorkspaceConfig(workspace_file=Path("/tmp/ws.toml"))
-        assert cfg.resolve_source_path("nonexistent") is None
+        with TemporaryDirectory() as tmpdir:
+            cfg = WorkspaceConfig(workspace_file=Path(tmpdir) / "ws.toml")
+            assert cfg.resolve_source_path("nonexistent") is None
 
     def test_get_reachable_sources(self):
         with TemporaryDirectory() as tmpdir:
