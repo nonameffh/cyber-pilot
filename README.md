@@ -278,14 +278,14 @@ Cypilot supports **multi-repo workspaces** — a federation layer that lets you 
 
 ```bash
 # Option A: Auto-discover sibling repos and generate workspace
-python3 cypilot/skills/cypilot/scripts/cypilot.py workspace-init
+python3 cypilot/.core/skills/cypilot/scripts/cypilot.py workspace-init
 
 # Option B: Add sources individually
-python3 cypilot/skills/cypilot/scripts/cypilot.py workspace-add --name docs --path ../docs-repo --role artifacts
-python3 cypilot/skills/cypilot/scripts/cypilot.py workspace-add --name shared-kits --path ../shared-kits --role kits
+python3 cypilot/.core/skills/cypilot/scripts/cypilot.py workspace-add --name docs --path ../docs-repo --role artifacts
+python3 cypilot/.core/skills/cypilot/scripts/cypilot.py workspace-add --name shared-kits --path ../shared-kits --role kits
 
 # Option C: Define workspace inline in your repo's config
-python3 cypilot/skills/cypilot/scripts/cypilot.py workspace-add-inline --name docs --path ../docs-repo
+python3 cypilot/.core/skills/cypilot/scripts/cypilot.py workspace-add-inline --name docs --path ../docs-repo
 ```
 
 ### How It Works
@@ -301,19 +301,19 @@ The **current working directory** always determines the primary repo. Other repo
 
 ```bash
 # Validate with cross-repo ID resolution (default when workspace active)
-python3 cypilot/skills/cypilot/scripts/cypilot.py validate
+python3 cypilot/.core/skills/cypilot/scripts/cypilot.py validate
 
 # Validate local repo only (skip cross-repo)
-python3 cypilot/skills/cypilot/scripts/cypilot.py validate --local-only
+python3 cypilot/.core/skills/cypilot/scripts/cypilot.py validate --local-only
 
 # Search for ID definitions across all repos
-python3 cypilot/skills/cypilot/scripts/cypilot.py where-defined --id cpt-myapp-req-001
+python3 cypilot/.core/skills/cypilot/scripts/cypilot.py where-defined --id cpt-myapp-req-001
 
 # List IDs from a specific source
-python3 cypilot/skills/cypilot/scripts/cypilot.py list-ids --source docs-repo
+python3 cypilot/.core/skills/cypilot/scripts/cypilot.py list-ids --source docs-repo
 
 # Check workspace status
-python3 cypilot/skills/cypilot/scripts/cypilot.py workspace-info
+python3 cypilot/.core/skills/cypilot/scripts/cypilot.py workspace-info
 ```
 
 Missing source repos are handled gracefully — a warning is emitted and operations continue with available sources.

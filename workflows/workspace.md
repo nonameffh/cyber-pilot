@@ -9,7 +9,7 @@ purpose: Guide workspace federation setup for cross-repo traceability
 
 # Cypilot Workspace Workflow
 
-ALWAYS open and follow `{cypilot_path}/skills/cypilot/SKILL.md` FIRST WHEN {cypilot_mode} is `off`
+ALWAYS open and follow `{cypilot_path}/.core/skills/cypilot/SKILL.md` FIRST WHEN {cypilot_mode} is `off`
 
 **Type**: Operation
 **Role**: Any
@@ -59,12 +59,12 @@ This workflow is invoked through the main Cypilot workflows or directly via work
 
 1. **Identify current project root**
    ```bash
-   python3 {cypilot_path}/skills/cypilot/scripts/cypilot.py info
+   python3 {cypilot_path}/.core/skills/cypilot/scripts/cypilot.py info
    ```
 
 2. **Scan sibling directories** for repos with `.git` or `AGENTS.md` with `@cpt:root-agents` marker
    ```bash
-   python3 {cypilot_path}/skills/cypilot/scripts/cypilot.py workspace-init --dry-run
+   python3 {cypilot_path}/.core/skills/cypilot/scripts/cypilot.py workspace-init --dry-run
    ```
 
 3. **Present discovered repos** to user with:
@@ -112,23 +112,23 @@ This workflow is invoked through the main Cypilot workflows or directly via work
 ### Option A: Standalone file
 
 ```bash
-python3 {cypilot_path}/skills/cypilot/scripts/cypilot.py workspace-init [--root <super-root>] [--output <path>]
+python3 {cypilot_path}/.core/skills/cypilot/scripts/cypilot.py workspace-init [--root <super-root>] [--output <path>]
 ```
 
 ### Option B: Inline in config
 
 ```bash
-python3 {cypilot_path}/skills/cypilot/scripts/cypilot.py workspace-init --inline
+python3 {cypilot_path}/.core/skills/cypilot/scripts/cypilot.py workspace-init --inline
 ```
 
 ### Adding individual sources
 
 ```bash
 # Add to standalone workspace file
-python3 {cypilot_path}/skills/cypilot/scripts/cypilot.py workspace-add --name <name> --path <path> [--role <role>] [--adapter <adapter-path>]
+python3 {cypilot_path}/.core/skills/cypilot/scripts/cypilot.py workspace-add --name <name> --path <path> [--role <role>] [--adapter <adapter-path>]
 
 # Add inline to core.toml
-python3 {cypilot_path}/skills/cypilot/scripts/cypilot.py workspace-add-inline --name <name> --path <path> [--role <role>]
+python3 {cypilot_path}/.core/skills/cypilot/scripts/cypilot.py workspace-add-inline --name <name> --path <path> [--role <role>]
 ```
 
 ### Generated file structure
@@ -173,7 +173,7 @@ role = "kits"
 
 1. **Run workspace info**:
    ```bash
-   python3 {cypilot_path}/skills/cypilot/scripts/cypilot.py workspace-info
+   python3 {cypilot_path}/.core/skills/cypilot/scripts/cypilot.py workspace-info
    ```
 
 2. **Check each source**:
@@ -185,10 +185,10 @@ role = "kits"
 3. **Test cross-repo operations**:
    ```bash
    # List IDs across all sources
-   python3 {cypilot_path}/skills/cypilot/scripts/cypilot.py list-ids
+   python3 {cypilot_path}/.core/skills/cypilot/scripts/cypilot.py list-ids
 
    # Validate with cross-repo resolution
-   python3 {cypilot_path}/skills/cypilot/scripts/cypilot.py validate
+   python3 {cypilot_path}/.core/skills/cypilot/scripts/cypilot.py validate
    ```
 
 4. **Report**:

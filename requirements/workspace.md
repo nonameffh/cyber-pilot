@@ -67,12 +67,12 @@ Can be placed at a **super-root** (parent directory containing multiple repos) o
   "sources": {
     "docs-repo": {
       "path": "../docs-repo",
-      "adapter": ".cypilot-adapter",
+      "adapter": "cypilot",
       "role": "artifacts"
     },
     "code-repo": {
       "path": "../code-repo",
-      "adapter": ".cypilot-adapter",
+      "adapter": ".bootstrap",
       "role": "codebase"
     },
     "shared-kits": {
@@ -271,13 +271,16 @@ Running `cypilot validate` from `code-repo/` will:
 parent/
 ├── .cypilot-workspace.json
 ├── frontend/
-│   ├── .cypilot-adapter/
+│   ├── AGENTS.md
+│   ├── .cypilot/
 │   └── src/
 ├── backend/
-│   ├── .cypilot-adapter/
+│   ├── AGENTS.md
+│   ├── .bootstrap/
 │   └── src/
 └── docs/
-    ├── .cypilot-adapter/
+    ├── AGENTS.md
+    ├── cypilot/
     └── architecture/
 ```
 

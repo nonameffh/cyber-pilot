@@ -17,7 +17,7 @@ def cmd_workspace_add(argv: List[str]) -> int:
     p.add_argument("--name", required=True, help="Source name (human-readable key)")
     p.add_argument("--path", required=True, help="Path to the source repo (relative to workspace file)")
     p.add_argument("--role", default="full", choices=["artifacts", "codebase", "kits", "full"], help="Source role")
-    p.add_argument("--adapter", default=None, help="Path to adapter dir within the source (e.g., .cypilot-adapter)")
+    p.add_argument("--adapter", default=None, help="Path to cypilot dir within the source (e.g., cypilot, .bootstrap)")
     args = p.parse_args(argv)
 
     from ..utils.workspace import find_workspace_config
