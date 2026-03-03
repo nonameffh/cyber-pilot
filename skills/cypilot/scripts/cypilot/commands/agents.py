@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from ..utils.files import core_subpath, gen_subpath, find_project_root, _is_cypilot_root, _read_cypilot_var, load_project_config
+from ..utils.ui import ui
 
 
 def _safe_relpath(path: Path, base: Path) -> str:
@@ -932,11 +933,15 @@ def cmd_agents(argv: List[str]) -> int:
     start_path = Path(args.root).resolve()
     project_root = find_project_root(start_path)
     if project_root is None:
-        print(json.dumps({
-            "status": "NOT_FOUND",
-            "message": "No project root found (no AGENTS.md with @cpt:root-agents or .git)",
-            "searched_from": start_path.as_posix(),
-        }, indent=2, ensure_ascii=False))
+        ui.result(
+            {"status": "NOT_FOUND", "message": "No project root found (no AGENTS.md with @cpt:root-agents or .git)", "searched_from": start_path.as_posix()},
+            human_fn=lambda d: (
+                ui.error("No project root found."),
+                ui.detail("Searched from", start_path.as_posix()),
+                ui.hint("Initialize Cypilot first:  cpt init"),
+                ui.blank(),
+            ),
+        )
         return 1
 
     cypilot_root = Path(args.cypilot_root).resolve() if args.cypilot_root else None
@@ -963,12 +968,15 @@ def cmd_agents(argv: List[str]) -> int:
     # @cpt-begin:cpt-cypilot-flow-agent-integration-generate:p1:inst-ensure-local
     cypilot_root, copy_report = _ensure_cypilot_local(cypilot_root, project_root, args.dry_run)
     if copy_report.get("action") == "error":
-        print(json.dumps({
-            "status": "COPY_ERROR",
-            "message": f"Failed to copy cypilot into project: {copy_report.get('message', 'unknown')}",
-            "cypilot_root": cypilot_root.as_posix(),
-            "project_root": project_root.as_posix(),
-        }, indent=2, ensure_ascii=False))
+        _err_msg = f"Failed to copy cypilot into project: {copy_report.get('message', 'unknown')}"
+        ui.result(
+            {"status": "COPY_ERROR", "message": _err_msg, "cypilot_root": cypilot_root.as_posix(), "project_root": project_root.as_posix()},
+            human_fn=lambda d: (
+                ui.error(_err_msg),
+                ui.hint("Check permissions and disk space."),
+                ui.blank(),
+            ),
+        )
         return 1
     # @cpt-end:cpt-cypilot-flow-agent-integration-generate:p1:inst-ensure-local
 
@@ -995,7 +1003,7 @@ def cmd_agents(argv: List[str]) -> int:
     # @cpt-begin:cpt-cypilot-flow-agent-integration-generate:p1:inst-return-report
     overall_status = "PASS" if not has_errors else "PARTIAL"
 
-    print(json.dumps({
+    agents_result = {
         "status": overall_status,
         "agents": list(agents_to_process),
         "project_root": project_root.as_posix(),
@@ -1004,7 +1012,72 @@ def cmd_agents(argv: List[str]) -> int:
         "dry_run": bool(args.dry_run),
         "cypilot_copy": copy_report,
         "results": results,
-    }, indent=2, ensure_ascii=False))
+    }
+    ui.result(agents_result, human_fn=lambda d: _human_agents_ok(d, agents_to_process, results, args.dry_run))
 
     # @cpt-end:cpt-cypilot-flow-agent-integration-generate:p1:inst-return-report
     return 0 if not has_errors else 1
+
+
+# ---------------------------------------------------------------------------
+# Human-friendly formatter
+# ---------------------------------------------------------------------------
+
+def _human_agents_ok(
+    data: Dict[str, Any],
+    agents_to_process: List[str],
+    results: Dict[str, Any],
+    dry_run: bool,
+) -> None:
+    agent_label = ", ".join(agents_to_process)
+    ui.header(f"Cypilot Agent Setup — {agent_label}")
+
+    for agent_name, r in results.items():
+        agent_status = r.get("status", "?")
+        wf = r.get("workflows", {})
+        sk = r.get("skills", {})
+        wf_counts = wf.get("counts", {})
+        sk_counts = sk.get("counts", {})
+
+        if agent_status == "PASS":
+            ui.step(f"{agent_name}")
+        else:
+            ui.warn(f"{agent_name} ({agent_status})")
+
+        # Workflows
+        created_wf = wf.get("created", [])
+        updated_wf = wf.get("updated", [])
+        for path in created_wf:
+            ui.file_action(path, "created")
+        for path in updated_wf:
+            ui.file_action(path, "updated")
+
+        # Skills
+        created_sk = sk.get("created", [])
+        updated_sk = sk.get("updated", [])
+        for path in created_sk:
+            ui.file_action(path, "created")
+        for path in updated_sk:
+            ui.file_action(path, "updated")
+
+        total_wf = wf_counts.get("created", 0) + wf_counts.get("updated", 0)
+        total_sk = sk_counts.get("created", 0) + sk_counts.get("updated", 0)
+        if total_wf or total_sk:
+            ui.substep(f"{total_wf} workflow(s), {total_sk} skill file(s)")
+
+        # Errors
+        errs = r.get("errors") or []
+        for e in errs:
+            ui.warn(f"  {e}")
+
+    if dry_run:
+        ui.success("Dry run complete — no files were written.")
+    elif data.get("status") == "PASS":
+        ui.success("Agent integration complete!")
+        ui.blank()
+        ui.info("Your IDE will now:")
+        ui.hint("• Route /cypilot-generate and /cypilot-analyze to Cypilot workflows")
+        ui.hint("• Recognize the Cypilot skill in chat")
+    else:
+        ui.warn("Agent setup finished with some errors (see above).")
+    ui.blank()

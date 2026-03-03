@@ -256,11 +256,11 @@ Each kit is a **blueprint package** — a `blueprints/` directory containing one
 |-----------------|-----------------|
 | `@cpt:heading` + `@cpt:id` | `constraints.toml` (heading/ID constraints) |
 | `@cpt:rules` + `@cpt:rule` | `rules.md` (validation rules) |
-| `@cpt:checklist` + `@cpt:check` | `checklist.md` (quality criteria) |
+| `@cpt:check` | `checklist.md` (quality criteria) |
 | `@cpt:prompt` | `template.md` (writing instructions) |
 | `@cpt:example` | `examples/example.md` |
 | `@cpt:skill` | `SKILL.md` (kit skill extensions) |
-| `@cpt:sysprompt` | `AGENTS.md` (agent system prompt content) |
+| `@cpt:system-prompt` | `AGENTS.md` (agent system prompt content) |
 | `@cpt:workflow` | `workflows/{name}.md` (kit-specific workflows) |
 
 Users can customize blueprints in `config/kits/{slug}/blueprints/`. Running `cypilot update` regenerates `.gen/` from user blueprints while preserving user config.

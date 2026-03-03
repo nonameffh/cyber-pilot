@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Dict, List
 
 from ..utils.constraints import error as constraints_error
+from ..utils.ui import ui
 
 
 def cmd_validate_kits(argv: List[str]) -> int:
@@ -33,7 +34,7 @@ def cmd_validate_kits(argv: List[str]) -> int:
 
     ctx = get_context()
     if not ctx:
-        print(json.dumps({"status": "ERROR", "message": "Cypilot not initialized. Run 'cypilot init' first."}, indent=None, ensure_ascii=False))
+        ui.result({"status": "ERROR", "message": "Cypilot not initialized. Run 'cypilot init' first."})
         return 1
 
     project_root = ctx.project_root
@@ -108,9 +109,28 @@ def cmd_validate_kits(argv: List[str]) -> int:
             if len(all_errors) > 10:
                 result["errors_truncated"] = len(all_errors) - 10
 
-    out = json.dumps(result, indent=2 if args.verbose else None, ensure_ascii=False)
-    if args.verbose:
-        out += "\n"
-    print(out)
+    ui.result(result, human_fn=lambda d: _human_validate_kits(d))
     # @cpt-end:cpt-cypilot-flow-blueprint-system-validate-kits:p1:inst-return-validate-ok
     return 0 if overall_status == "PASS" else 2
+
+
+def _human_validate_kits(data: dict) -> None:
+    ui.header("Validate Kits")
+    for k in data.get("kits", []):
+        kit_id = k.get("kit", "?")
+        status = k.get("status", "?")
+        if status == "PASS":
+            ui.step(f"{kit_id}: PASS")
+        else:
+            ui.warn(f"{kit_id}: {status} ({k.get('error_count', 0)} errors)")
+    failed = data.get("failed_kits", [])
+    if failed:
+        for fk in failed:
+            ui.warn(f"{fk.get('kit', '?')}: {fk.get('error_count', 0)} error(s)")
+    overall = data.get("status", "")
+    n = data.get("kits_validated", 0)
+    if overall == "PASS":
+        ui.success(f"{n} kit(s) validated, all passed.")
+    else:
+        ui.error(f"{n} kit(s) validated, {data.get('error_count', 0)} error(s).")
+    ui.blank()

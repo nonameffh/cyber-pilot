@@ -6,6 +6,7 @@ from typing import Dict, List, Optional, Set, Tuple
 
 from ..utils.codebase import CodeFile
 from ..utils.document import scan_cpt_ids
+from ..utils.ui import ui
 
 
 # @cpt-flow:cpt-cypilot-flow-traceability-validation-query:p1
@@ -34,14 +35,14 @@ def cmd_list_ids(argv: List[str]) -> int:
         # Single artifact specified - find context from artifact's location
         artifact_path = Path(args.artifact).resolve()
         if not artifact_path.exists():
-            print(json.dumps({"status": "ERROR", "message": f"Artifact not found: {artifact_path}"}, indent=None, ensure_ascii=False))
+            ui.result({"status": "ERROR", "message": f"Artifact not found: {artifact_path}"})
             return 1
 
         from ..utils.context import CypilotContext
 
         ctx = CypilotContext.load(artifact_path.parent)
         if not ctx:
-            print(json.dumps({"status": "ERROR", "message": "Cypilot not initialized. Run 'cypilot init' first or specify --artifact."}, indent=None, ensure_ascii=False))
+            ui.result({"status": "ERROR", "message": "Cypilot not initialized. Run 'cypilot init' first or specify --artifact."})
             return 1
 
         project_root = ctx.project_root
@@ -60,7 +61,7 @@ def cmd_list_ids(argv: List[str]) -> int:
                 artifacts_to_scan.append((artifact_path, str(artifact_meta.kind)))
 
         if not artifacts_to_scan:
-            print(json.dumps({"status": "ERROR", "message": "Artifact not registered in Cypilot registry."}, indent=None, ensure_ascii=False))
+            ui.result({"status": "ERROR", "message": "Artifact not registered in Cypilot registry."})
             return 1
     else:
         # No artifact specified - use global context from cwd
@@ -68,7 +69,7 @@ def cmd_list_ids(argv: List[str]) -> int:
 
         ctx = get_context()
         if not ctx:
-            print(json.dumps({"status": "ERROR", "message": "Cypilot not initialized. Run 'cypilot init' first or specify --artifact."}, indent=None, ensure_ascii=False))
+            ui.result({"status": "ERROR", "message": "Cypilot not initialized. Run 'cypilot init' first or specify --artifact."})
             return 1
 
         meta = ctx.meta
@@ -80,7 +81,7 @@ def cmd_list_ids(argv: List[str]) -> int:
                 artifacts_to_scan.append((artifact_path, str(artifact_meta.kind)))
 
         if not artifacts_to_scan:
-            print(json.dumps({"count": 0, "artifacts_scanned": 0, "ids": []}, indent=None, ensure_ascii=False))
+            ui.result({"count": 0, "artifacts_scanned": 0, "ids": []})
             return 0
     # @cpt-end:cpt-cypilot-flow-traceability-validation-query:p1:inst-query-load-context
 
@@ -225,6 +226,6 @@ def cmd_list_ids(argv: List[str]) -> int:
 
     # @cpt-end:cpt-cypilot-flow-traceability-validation-query:p1:inst-if-list
     # @cpt-begin:cpt-cypilot-flow-traceability-validation-query:p1:inst-return-query
-    print(json.dumps(result, indent=None, ensure_ascii=False))
+    ui.result(result)
     return 0
     # @cpt-end:cpt-cypilot-flow-traceability-validation-query:p1:inst-return-query

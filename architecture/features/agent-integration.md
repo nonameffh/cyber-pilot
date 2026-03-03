@@ -78,7 +78,7 @@ Without this feature, users would need to manually create and maintain agent-spe
 3. [x] - `p1` - Ensure cypilot files are local to project (copy if external) - `inst-ensure-local`
 4. - `p1` - Discover all workflow files from `.core/workflows/` and `.gen/kits/*/workflows/` - `inst-discover-workflows`
 5. - `p1` - Collect `@cpt:skill` content from `.gen/kits/*/SKILL.md` - `inst-collect-skill`
-6. - `p1` - Collect `@cpt:sysprompt` content from `.gen/AGENTS.md` - `inst-collect-sysprompt`
+6. - `p1` - Collect `@cpt:system-prompt` content from `.gen/AGENTS.md` - `inst-collect-sysprompt`
 7. [x] - `p1` - **FOR EACH** supported agent (or filtered by `--agent`) - `inst-for-each-agent`
    1. - `p1` - Generate agent-native entry points (skill shims, workflow proxies, rules) - `inst-generate-entry-points`
    2. - `p1` - Write files to agent directory (e.g., `.windsurf/workflows/`, `.cursor/rules/`) - `inst-write-files`

@@ -53,7 +53,7 @@ ALWAYS open and follow `{cypilot_path}/.core/requirements/artifacts-registry.md`
 
 **What**: `artifacts.toml` is the Cypilot artifact registry — a TOML file that declares all systems, their artifacts, and codebase locations.
 
-**Location**: `.cypilot/config/artifacts.toml`
+**Location**: `{cypilot_path}/config/artifacts.toml`
 
 **Purpose**:
 - Declares system hierarchy (systems → subsystems → components)
@@ -683,7 +683,7 @@ cypilot.py validate-kits
 ### Finding the Registry
 
 1. Run `info` to discover project location
-2. Registry is at `.cypilot/config/artifacts.toml`
+2. Registry is at `{cypilot_path}/config/artifacts.toml`
 3. Parse TOML to get registry data
 
 ### Iterating Artifacts
@@ -728,7 +728,7 @@ else:
 
 **If artifacts.toml doesn't exist**:
 ```
-⚠️ Registry not found: .cypilot/config/artifacts.toml
+⚠️ Registry not found: {cypilot_path}/config/artifacts.toml
 → Registry not initialized
 → Fix: Run `cypilot init` to create registry
 ```
@@ -947,7 +947,7 @@ extensions = [".ts"]
 **CLI**: `skills/cypilot/cypilot.clispec`
 
 **Related**:
-- `sysprompts.md` - Project system prompts (.cypilot/config/sysprompts + config/AGENTS.md)
+- `sysprompts.md` - Project system prompts (`{cypilot_path}/config/sysprompts/` + `config/AGENTS.md`)
 - `execution-protocol.md` - Workflow execution protocol
 
 ---
@@ -960,7 +960,7 @@ extensions = [".ts"]
 
 | # | Check | Required | How to Verify |
 |---|-------|----------|---------------|
-| R.1 | `artifacts.toml` exists at `.cypilot/config/` | YES | File exists at `.cypilot/config/artifacts.toml` |
+| R.1 | `artifacts.toml` exists at `{cypilot_path}/config/` | YES | File exists at `{cypilot_path}/config/artifacts.toml` |
 | R.2 | TOML parses without errors | YES | `tomllib.loads()` succeeds |
 | R.3 | `version` field resolvable (from `core.toml` or `artifacts.toml`) | YES | Field exists in at least one source and is string |
 | R.4 | `systems` array present | YES | Array (may be empty) |

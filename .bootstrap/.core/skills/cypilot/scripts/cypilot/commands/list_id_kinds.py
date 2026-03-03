@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
 from ..utils.document import scan_cpt_ids
+from ..utils.ui import ui
 
 
 def cmd_list_id_kinds(argv: List[str]) -> int:
@@ -33,14 +34,14 @@ def cmd_list_id_kinds(argv: List[str]) -> int:
     if args.artifact:
         artifact_path = Path(args.artifact).resolve()
         if not artifact_path.exists():
-            print(json.dumps({"status": "ERROR", "message": f"Artifact not found: {artifact_path}"}, indent=None, ensure_ascii=False))
+            ui.result({"status": "ERROR", "message": f"Artifact not found: {artifact_path}"})
             return 1
 
         from ..utils.context import CypilotContext
 
         ctx = CypilotContext.load(artifact_path.parent)
         if not ctx:
-            print(json.dumps({"status": "ERROR", "message": "Cypilot not initialized"}, indent=None, ensure_ascii=False))
+            ui.result({"status": "ERROR", "message": "Cypilot not initialized"})
             return 1
 
         project_root = ctx.project_root
@@ -58,7 +59,7 @@ def cmd_list_id_kinds(argv: List[str]) -> int:
                 artifacts_to_scan.append((artifact_path, str(artifact_meta.kind)))
 
         if not artifacts_to_scan:
-            print(json.dumps({"status": "ERROR", "message": f"Artifact not found in registry: {args.artifact}"}, indent=None, ensure_ascii=False))
+            ui.result({"status": "ERROR", "message": f"Artifact not found in registry: {args.artifact}"})
             return 1
     else:
         # Scan all Cypilot artifacts from global context (autodetect-expanded)
@@ -66,7 +67,7 @@ def cmd_list_id_kinds(argv: List[str]) -> int:
 
         ctx = get_context()
         if not ctx:
-            print(json.dumps({"status": "ERROR", "message": "Cypilot not initialized. Run 'cypilot init' first."}, indent=None, ensure_ascii=False))
+            ui.result({"status": "ERROR", "message": "Cypilot not initialized. Run 'cypilot init' first."})
             return 1
 
         meta = ctx.meta
@@ -79,7 +80,7 @@ def cmd_list_id_kinds(argv: List[str]) -> int:
 
         # @cpt-begin:cpt-cypilot-algo-traceability-validation-list-id-kinds:p1:inst-kinds-if-no-artifacts
         if not artifacts_to_scan:
-            print(json.dumps({"kinds": [], "kind_counts": {}, "kind_to_templates": {}, "template_to_kinds": {}, "artifacts_scanned": 0}, indent=None, ensure_ascii=False))
+            ui.result({"kinds": [], "kind_counts": {}, "kind_to_templates": {}, "template_to_kinds": {}, "artifacts_scanned": 0})
             return 0
         # @cpt-end:cpt-cypilot-algo-traceability-validation-list-id-kinds:p1:inst-kinds-if-no-artifacts
     # @cpt-end:cpt-cypilot-algo-traceability-validation-list-id-kinds:p1:inst-kinds-resolve-artifacts
@@ -153,19 +154,19 @@ def cmd_list_id_kinds(argv: List[str]) -> int:
     if args.artifact and artifacts_to_scan:
         artifact_path, artifact_type = artifacts_to_scan[0]
         kinds_in_artifact = sorted(template_to_kinds.get(artifact_type, set()))
-        print(json.dumps({
+        ui.result({
             "artifact": str(artifact_path),
             "artifact_type": artifact_type,
             "kinds": kinds_in_artifact,
             "kind_counts": {k: kind_counts.get(k, 0) for k in kinds_in_artifact},
-        }, indent=None, ensure_ascii=False))
+        })
     else:
-        print(json.dumps({
+        ui.result({
             "kinds": all_kinds,
             "kind_counts": {k: kind_counts.get(k, 0) for k in all_kinds},
             "kind_to_templates": {k: sorted(v) for k, v in sorted(kind_to_templates.items())},
             "template_to_kinds": {k: sorted(v) for k, v in sorted(template_to_kinds.items())},
             "artifacts_scanned": len(artifacts_to_scan),
-        }, indent=None, ensure_ascii=False))
+        })
     # @cpt-end:cpt-cypilot-algo-traceability-validation-list-id-kinds:p1:inst-kinds-return
     return 0

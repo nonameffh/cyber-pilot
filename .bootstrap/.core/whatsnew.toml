@@ -46,3 +46,16 @@ details = """\
 - Sysprompt singleton support and improved fence tracking in blueprint parser
 - Orphaned marker cleanup\
 """
+
+["v3.0.8-beta"]
+summary = "Dual-mode CLI output, interactive modify (editor)"
+details = """\
+- All commands now support --json flag for machine-readable JSON output (for AI agents)
+- Without --json, commands produce human-friendly output with colors, progress, and hints
+- Global --json flag extracted before command dispatch in CLI entrypoint
+- Shared ui.py module for consistent output formatting across all commands
+- Interactive migration: new 'm' (modify) option opens $VISUAL/$EDITOR for manual marker merge
+- Editor pre-fills user content with commented diff for reference, git-style
+- SKILL.md updated to mandate --json for all agent invocations
+- Top-level help (cpt / cpt --help) shows structured command reference\
+"""

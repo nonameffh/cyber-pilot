@@ -133,7 +133,7 @@ The system consists of two layers:
 | Term | Definition |
 |------|------------|
 | Cypilot | Deterministic agent tool: global CLI + project-installed skill + kits + workflows |
-| Skill | The core Python package installed in a project's `.cypilot/` directory, containing all commands, validation logic, and utilities |
+| Skill | The core Python package installed in a project's `{cypilot_path}/` directory (default: `cypilot/`), containing all commands, validation logic, and utilities |
 | Kit | Extensible package of templates, checklists, rules, examples, and constraints for a domain (e.g., SDLC) |
 | Config | `config/` directory inside the install directory containing `core.toml` and per-kit configs in `kits/<slug>/`, managed exclusively by the tool |
 | CDSL | Cypilot DSL — plain English behavioral specification language for actor flows and algorithms |
@@ -179,7 +179,7 @@ The system consists of two layers:
 
 ### 3.1 Module-Specific Environment Constraints
 
-- Python 3.10+ required for the CLI tool and skill engine
+- Python 3.11+ required for the CLI tool and skill engine (requires `tomllib` from stdlib)
 - Git required for project detection, version control, and skill installation
 - `gh` CLI required for PR review/status workflows (GitHub integration)
 - `pipx` recommended for global CLI installation (isolation from project dependencies)
@@ -226,7 +226,7 @@ The system consists of two layers:
 The system MUST provide a global CLI tool installable via `pipx install git+https://github.com/cyberfabric/cyber-pilot.git`. The tool MUST be available as both `cypilot` and the short alias `cpt`. The global tool MUST have zero built-in commands — it is a pure proxy shell. On every invocation the tool MUST:
 
 1. **Ensure cache** — maintain a local skill bundle cache (`~/.cypilot/cache/`). If no cache exists, download the latest skill bundle from the GitHub repository before proceeding. The tool MUST NOT require git as a runtime dependency.
-2. **Resolve command target** — if the current directory is inside a project with an installed skill (`.cypilot/` directory), proxy the command to the project-installed skill. Otherwise, proxy the command to the cached skill.
+2. **Resolve command target** — if the current directory is inside a project with an installed skill (`{cypilot_path}/` directory, default: `cypilot/`), proxy the command to the project-installed skill. Otherwise, proxy the command to the cached skill.
 3. **Version check (non-blocking)** — on every invocation, check for newer versions in the background. The check MUST NOT block or delay the main command execution. Concurrent checks MUST be prevented. A newly available version becomes visible on the next invocation.
 4. **Version highlight** — if the cached version is newer than the project-installed version, display a notice: "Cypilot {cached_version} available (project has {project_version}). Run `cypilot update` to upgrade."
 
@@ -631,7 +631,7 @@ The SDLC kit MUST support per-project PR review configuration with: prompt selec
 **Actors**:
 `cpt-cypilot-actor-user`, `cpt-cypilot-actor-cypilot-cli`
 
-**Preconditions**: Python 3.10+ and pipx installed
+**Preconditions**: Python 3.11+ and pipx installed
 
 **Flow**:
 
@@ -675,7 +675,7 @@ The SDLC kit MUST support per-project PR review configuration with: prompt selec
 **Alternative Flows**:
 - **Existing installation detected**: Tool displays "Cypilot is already installed at {path} (version {version})." and proposes `cypilot update` if a newer version is available. Does NOT overwrite or modify the existing installation.
 
-**Postconditions**: Project has `.cypilot/` with full structure, config, agent entry points, and root `AGENTS.md` entry; ready for artifact workflows
+**Postconditions**: Project has `{cypilot_path}/` with full structure (`.core/`, `.gen/`, `config/`), agent entry points, and root `AGENTS.md` entry; ready for artifact workflows
 
 ---
 
@@ -686,7 +686,7 @@ The SDLC kit MUST support per-project PR review configuration with: prompt selec
 **Actors**:
 `cpt-cypilot-actor-user`, `cpt-cypilot-actor-ai-agent`
 
-**Preconditions**: Project has Cypilot initialized (`.cypilot/` exists)
+**Preconditions**: Project has Cypilot initialized (`{cypilot_path}/` exists)
 
 **Flow**:
 
@@ -697,7 +697,7 @@ The SDLC kit MUST support per-project PR review configuration with: prompt selec
 5. AI Agent announces: "Cypilot Mode Enabled. Config: FOUND at {path}"
 
 **Alternative Flows**:
-- **`.cypilot/` not found**: AI Agent announces: "Cypilot not initialized. Run `cypilot init` first." and exits Cypilot mode.
+- **`{cypilot_path}/` not found**: AI Agent announces: "Cypilot not initialized. Run `cypilot init` first." and exits Cypilot mode.
 - **SKILL.md or config missing/corrupt**: AI Agent announces: "Cypilot installation incomplete. Run `cypilot doctor` for diagnostics."
 
 **Postconditions**: AI Agent follows Cypilot workflows for subsequent requests; execution logging is active
@@ -936,7 +936,7 @@ The SDLC kit MUST support per-project PR review configuration with: prompt selec
 
 ## 9. Acceptance Criteria
 
-- [ ] `cypilot init` completes interactive setup and creates a working `.cypilot/` directory in ≤ 5 minutes
+- [ ] `cypilot init` completes interactive setup and creates a working `{cypilot_path}/` directory (default: `cypilot/`) in ≤ 5 minutes
 - [ ] Deterministic validation output is actionable (clear file/line/pointer for every issue)
 - [ ] All supported agents receive correct entry points after `cypilot agents`
 - [ ] `cypilot doctor` reports environment health with pass/fail per check

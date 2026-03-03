@@ -383,16 +383,16 @@ Options:
 
 ### File Location
 
-Standard location: `architecture/cli-specs/commands.clispec`
+Standard location: `skills/cypilot/cypilot.clispec`
 
 ### Validation
 
 ```bash
 # Validate CLISPEC format
-cypilot validate-cli-specs
+cypilot validate-kits
 
 # Or custom validator
-your-tool validate-clispec architecture/cli-specs/commands.clispec
+your-tool validate-clispec skills/cypilot/cypilot.clispec
 ```
 
 ### Linking from DESIGN.md
@@ -401,7 +401,7 @@ your-tool validate-clispec architecture/cli-specs/commands.clispec
 ## API Contracts
 
 **Format**: CLISPEC
-**Location**: `architecture/cli-specs/commands.clispec`
+**Location**: `skills/cypilot/cypilot.clispec`
 
 **Commands**:
 - @CLI.init-spec - Initialize spec
@@ -468,7 +468,7 @@ Syntax highlighting:
 
 ## Version History
 
-- **v1.0** (2026-01): Initial specification
+- **v1.0** (2025-01): Initial specification
   - Basic structure
   - Type system
   - Linking syntax
@@ -479,7 +479,7 @@ Syntax highlighting:
 ## References
 
 - **Cypilot Methodology**: `AGENTS.md`
-- **Example Usage**: See `../.cypilot-adapter/AGENTS.md` for real-world CLISPEC
+- **Example Usage**: See `skills/cypilot/cypilot.clispec` for real-world CLISPEC
 
 ---
 

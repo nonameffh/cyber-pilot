@@ -1799,7 +1799,9 @@ class TestCLIErrorHandling(unittest.TestCase):
             exit_code = main([])
 
         self.assertEqual(exit_code, 0)
-        self.assertIn("usage: cypilot", stdout.getvalue())
+        out = json.loads(stdout.getvalue())
+        self.assertIn("cypilot", out["usage"])
+        self.assertIn("validate", out["commands"])
 
 
 class TestCLIBackwardCompatibility(unittest.TestCase):

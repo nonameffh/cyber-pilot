@@ -48,7 +48,7 @@ drivers:
 
 ### Kit Resolution
 
-1. Find system for target artifact in `.cypilot/config/artifacts.toml`
+1. Find system for target artifact in `{cypilot_path}/config/artifacts.toml`
 2. Get `kit` ID from system (e.g., `"cypilot-sdlc"`)
 3. Resolve kit slug from `{cypilot_path}/config/core.toml` (e.g., `"sdlc"`)
 4. Build full path: `{cypilot_path}/.gen/kits/{slug}/artifacts/{KIND}/rules.md`
@@ -272,7 +272,7 @@ Format: `` `path` — description ``. All paths are relative to the same kit con
 1. DETECT artifact type (explicit parameter or from artifacts.toml)
    ↓
 2. RESOLVE kit:
-   - Find system in .cypilot/config/artifacts.toml
+   - Find system in {cypilot_path}/config/artifacts.toml
    - Get kit ID → resolve path from config/core.toml
    ↓
 3. LOAD rules.md from .gen/kits/{slug}/artifacts/{KIND}/rules.md

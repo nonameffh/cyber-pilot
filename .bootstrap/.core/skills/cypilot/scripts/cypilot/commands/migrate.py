@@ -43,6 +43,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from ..utils import toml_utils
 from ..utils.files import find_project_root
+from ..utils.ui import ui
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -1785,7 +1786,7 @@ def cmd_migrate(argv: List[str]) -> int:
         dry_run=args.dry_run,
     )
 
-    print(json.dumps(result, indent=2, ensure_ascii=False))
+    ui.result(result)
 
     if result.get("status") == "PASS":
         return 0
@@ -1812,6 +1813,6 @@ def cmd_migrate_config(argv: List[str]) -> int:
     project_root = Path(args.project_root).resolve() if args.project_root else Path.cwd().resolve()
 
     result = run_migrate_config(project_root)
-    print(json.dumps(result, indent=2, ensure_ascii=False))
+    ui.result(result)
 
     return 0

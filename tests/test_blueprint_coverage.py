@@ -312,12 +312,12 @@ CODEBASE_BLUEPRINT = """\
     ```
     `@/cpt:check`
 
-    `@cpt:checklist_epilogue`
+    `@cpt:checklist_epilogue:default`
     ```markdown
     ## Summary
     Review complete.
     ```
-    `@/cpt:checklist_epilogue`
+    `@/cpt:checklist_epilogue:default`
 """
 
 
@@ -414,7 +414,7 @@ class TestCollectChecklist(unittest.TestCase):
             self.assertIn("Security (SEC)", result)
             self.assertIn("CB-SEC-01", result)
             self.assertIn("Check for common vulnerabilities.", result)
-            # Epilogue from @cpt:checklist_epilogue
+            # Epilogue from @cpt:checklist_epilogue:default
             self.assertIn("Review complete.", result)
             # Should NOT have MUST HAVE/MUST NOT HAVE H1 headers
             self.assertNotIn("# MUST HAVE", result)

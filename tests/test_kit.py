@@ -2332,5 +2332,477 @@ class TestMigrateKitWhatsnew(unittest.TestCase):
             self.assertIn("Test change", err.getvalue())
 
 
+# =========================================================================
+# Modify (editor) flow
+# =========================================================================
+
+class TestPromptConfirmModify(unittest.TestCase):
+    """_prompt_confirm with allow_modify returns 'm' for modify responses."""
+
+    def test_modify_m(self):
+        from cypilot.commands.kit import _prompt_confirm
+        from unittest.mock import patch
+        state: dict = {}
+        with patch("builtins.input", return_value="m"):
+            self.assertEqual(_prompt_confirm("Apply?", state, allow_modify=True), "m")
+
+    def test_modify_full_word(self):
+        from cypilot.commands.kit import _prompt_confirm
+        from unittest.mock import patch
+        state: dict = {}
+        with patch("builtins.input", return_value="modify"):
+            self.assertEqual(_prompt_confirm("Apply?", state, allow_modify=True), "m")
+
+    def test_modify_ignored_without_flag(self):
+        from cypilot.commands.kit import _prompt_confirm
+        from unittest.mock import patch
+        state: dict = {}
+        with patch("builtins.input", return_value="m"):
+            self.assertEqual(_prompt_confirm("Apply?", state, allow_modify=False), "n")
+
+    def test_modify_ignored_when_all(self):
+        from cypilot.commands.kit import _prompt_confirm
+        state = {"all": True}
+        self.assertEqual(_prompt_confirm("Apply?", state, allow_modify=True), "y")
+
+
+class TestGetEditor(unittest.TestCase):
+    """_get_editor respects $VISUAL, $EDITOR, falls back to vi."""
+
+    def test_visual_takes_precedence(self):
+        from cypilot.commands.kit import _get_editor
+        from unittest.mock import patch
+        with patch.dict("os.environ", {"VISUAL": "code", "EDITOR": "nano"}):
+            self.assertEqual(_get_editor(), "code")
+
+    def test_editor_fallback(self):
+        from cypilot.commands.kit import _get_editor
+        from unittest.mock import patch
+        env = {"EDITOR": "nano"}
+        with patch.dict("os.environ", env, clear=True):
+            self.assertEqual(_get_editor(), "nano")
+
+    def test_vi_default(self):
+        from cypilot.commands.kit import _get_editor
+        from unittest.mock import patch
+        with patch.dict("os.environ", {}, clear=True):
+            self.assertEqual(_get_editor(), "vi")
+
+
+class TestOpenEditorForMarker(unittest.TestCase):
+    """_open_editor_for_marker creates temp file, opens editor, returns result."""
+
+    def test_returns_edited_content(self):
+        from cypilot.commands.kit import _open_editor_for_marker, _EDITOR_SEPARATOR
+        from unittest.mock import patch
+
+        user_raw = '`@cpt:heading:t`\nOld content\n`@/cpt:heading:t`\n'
+        new_raw = '`@cpt:heading:t`\nNew content\n`@/cpt:heading:t`\n'
+        custom = '`@cpt:heading:t`\nMerged content\n`@/cpt:heading:t`\n'
+
+        def fake_editor(args):
+            # Rewrite the temp file with custom content after separator
+            path = args[1] if len(args) > 1 else args[0]
+            with open(path, "r", encoding="utf-8") as f:
+                content = f.read()
+            sep_idx = content.find(_EDITOR_SEPARATOR)
+            before = content[:sep_idx + len(_EDITOR_SEPARATOR)]
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(before + "\n" + custom)
+
+        with patch("cypilot.commands.kit.subprocess.check_call", side_effect=fake_editor):
+            with patch("cypilot.commands.kit._get_editor", return_value="fake-editor"):
+                result = _open_editor_for_marker("heading:t", user_raw, new_raw)
+
+        self.assertEqual(result, custom)
+
+    def test_abort_on_empty(self):
+        from cypilot.commands.kit import _open_editor_for_marker, _EDITOR_SEPARATOR
+        from unittest.mock import patch
+
+        user_raw = '`@cpt:heading:t`\nContent\n`@/cpt:heading:t`\n'
+        new_raw = '`@cpt:heading:t`\nNew\n`@/cpt:heading:t`\n'
+
+        def fake_editor_clear(args):
+            path = args[1] if len(args) > 1 else args[0]
+            with open(path, "r", encoding="utf-8") as f:
+                content = f.read()
+            sep_idx = content.find(_EDITOR_SEPARATOR)
+            before = content[:sep_idx + len(_EDITOR_SEPARATOR)]
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(before + "\n")
+
+        with patch("cypilot.commands.kit.subprocess.check_call", side_effect=fake_editor_clear):
+            with patch("cypilot.commands.kit._get_editor", return_value="fake-editor"):
+                result = _open_editor_for_marker("heading:t", user_raw, new_raw)
+
+        self.assertIsNone(result)
+
+    def test_editor_failure_returns_none(self):
+        from cypilot.commands.kit import _open_editor_for_marker
+        from unittest.mock import patch
+        import subprocess
+
+        user_raw = '`@cpt:heading:t`\nContent\n`@/cpt:heading:t`\n'
+        new_raw = '`@cpt:heading:t`\nNew\n`@/cpt:heading:t`\n'
+
+        with patch("cypilot.commands.kit.subprocess.check_call",
+                   side_effect=subprocess.CalledProcessError(1, "vi")):
+            with patch("cypilot.commands.kit._get_editor", return_value="vi"):
+                result = _open_editor_for_marker("heading:t", user_raw, new_raw)
+
+        self.assertIsNone(result)
+
+    def test_temp_file_contains_diff(self):
+        """Temp file should contain the diff as comments."""
+        from cypilot.commands.kit import _open_editor_for_marker, _EDITOR_SEPARATOR
+        from unittest.mock import patch
+
+        user_raw = '`@cpt:heading:t`\nOld\n`@/cpt:heading:t`\n'
+        new_raw = '`@cpt:heading:t`\nNew\n`@/cpt:heading:t`\n'
+        captured_content = []
+
+        def fake_editor(args):
+            path = args[1] if len(args) > 1 else args[0]
+            with open(path, "r", encoding="utf-8") as f:
+                captured_content.append(f.read())
+            # Don't change — return user content as-is
+
+        with patch("cypilot.commands.kit.subprocess.check_call", side_effect=fake_editor):
+            with patch("cypilot.commands.kit._get_editor", return_value="fake-editor"):
+                _open_editor_for_marker("heading:t", user_raw, new_raw)
+
+        self.assertTrue(len(captured_content) == 1)
+        content = captured_content[0]
+        self.assertIn(_EDITOR_SEPARATOR, content)
+        self.assertIn("cypilot migrate: edit marker [heading:t]", content)
+        self.assertIn("Old", content)
+        self.assertIn("New", content)
+
+
+class TestOpenEditorForMarkerEdgeCases(unittest.TestCase):
+    """Edge cases for _open_editor_for_marker."""
+
+    def test_identical_content_no_diff(self):
+        """When user and new content are identical, header shows 'no diff'."""
+        from cypilot.commands.kit import _open_editor_for_marker, _EDITOR_SEPARATOR
+        from unittest.mock import patch
+
+        same = '`@cpt:heading:t`\nSame content\n`@/cpt:heading:t`\n'
+        captured = []
+
+        def fake_editor(args):
+            path = args[1] if len(args) > 1 else args[0]
+            with open(path, "r", encoding="utf-8") as f:
+                captured.append(f.read())
+
+        with patch("cypilot.commands.kit.subprocess.check_call", side_effect=fake_editor):
+            with patch("cypilot.commands.kit._get_editor", return_value="fake"):
+                _open_editor_for_marker("heading:t", same, same)
+
+        self.assertIn("no diff", captured[0])
+
+    def test_separator_removed_by_editor(self):
+        """When editor removes separator, fallback strips header comments."""
+        from cypilot.commands.kit import _open_editor_for_marker
+        from unittest.mock import patch
+
+        user_raw = '`@cpt:heading:t`\nOld\n`@/cpt:heading:t`\n'
+        new_raw = '`@cpt:heading:t`\nNew\n`@/cpt:heading:t`\n'
+        custom = 'My custom content\n'
+
+        def fake_editor(args):
+            path = args[1] if len(args) > 1 else args[0]
+            # Replace file content entirely — no separator, no comments
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(custom)
+
+        with patch("cypilot.commands.kit.subprocess.check_call", side_effect=fake_editor):
+            with patch("cypilot.commands.kit._get_editor", return_value="fake"):
+                result = _open_editor_for_marker("heading:t", user_raw, new_raw)
+
+        self.assertEqual(result, custom)
+
+    def test_separator_removed_only_comments_left(self):
+        """All comment lines and no real content → abort (None)."""
+        from cypilot.commands.kit import _open_editor_for_marker
+        from unittest.mock import patch
+
+        user_raw = '`@cpt:heading:t`\nOld\n`@/cpt:heading:t`\n'
+        new_raw = '`@cpt:heading:t`\nNew\n`@/cpt:heading:t`\n'
+
+        def fake_editor(args):
+            path = args[1] if len(args) > 1 else args[0]
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("# just comments\n# nothing else\n")
+
+        with patch("cypilot.commands.kit.subprocess.check_call", side_effect=fake_editor):
+            with patch("cypilot.commands.kit._get_editor", return_value="fake"):
+                result = _open_editor_for_marker("heading:t", user_raw, new_raw)
+
+        self.assertIsNone(result)
+
+    def test_os_unlink_oserror_handled(self):
+        """OSError during temp file cleanup is silently ignored."""
+        from cypilot.commands.kit import _open_editor_for_marker, _EDITOR_SEPARATOR
+        from unittest.mock import patch
+
+        user_raw = '`@cpt:heading:t`\nOld\n`@/cpt:heading:t`\n'
+        new_raw = '`@cpt:heading:t`\nNew\n`@/cpt:heading:t`\n'
+
+        def fake_editor(args):
+            path = args[1] if len(args) > 1 else args[0]
+            # Delete the file before returning so os.unlink will fail
+            import os
+            os.unlink(path)
+
+        with patch("cypilot.commands.kit.subprocess.check_call", side_effect=fake_editor):
+            with patch("cypilot.commands.kit._get_editor", return_value="fake"):
+                # Editor deletes the file → check_call succeeds but
+                # open() for reading will fail → returns None
+                result = _open_editor_for_marker("heading:t", user_raw, new_raw)
+
+        self.assertIsNone(result)
+
+
+class TestMigrateKitModify(unittest.TestCase):
+    """Interactive migrate_kit with modify (editor) option."""
+
+    def _setup_kit(self, td_p, old_heading="Feature v1", new_heading="Feature v2",
+                   user_heading="Feature v1", ref_ver=2, user_ver=1):
+        root = td_p / "proj"
+        adapter = _bootstrap_project(root)
+        from cypilot.utils import toml_utils
+
+        bp_template = (
+            '`@cpt:blueprint`\n```toml\nkit = "sdlc"\nartifact = "FEAT"\n```\n`@/cpt:blueprint`\n\n'
+            '`@cpt:heading:title`\n```toml\nid = "title"\nlevel = 1\ntemplate = "{heading}"\n```\n`@/cpt:heading:title`\n'
+        )
+
+        ref_dir = adapter / "kits" / "sdlc"
+        ref_bp = ref_dir / "blueprints"
+        ref_bp.mkdir(parents=True)
+        (ref_bp / "FEAT.md").write_text(
+            bp_template.format(heading=new_heading), encoding="utf-8",
+        )
+        toml_utils.dump({"version": ref_ver}, ref_dir / "conf.toml")
+
+        prev_bp = ref_dir / ".prev" / "blueprints"
+        prev_bp.mkdir(parents=True)
+        (prev_bp / "FEAT.md").write_text(
+            bp_template.format(heading=old_heading), encoding="utf-8",
+        )
+
+        config_kit = adapter / "config" / "kits" / "sdlc"
+        user_bp = config_kit / "blueprints"
+        user_bp.mkdir(parents=True)
+        (user_bp / "FEAT.md").write_text(
+            bp_template.format(heading=user_heading), encoding="utf-8",
+        )
+        toml_utils.dump({"version": user_ver}, config_kit / "conf.toml")
+
+        return root, adapter, ref_dir, config_kit
+
+    def test_modify_updated_marker(self):
+        """Interactive 'm' on updated marker → uses editor result."""
+        from cypilot.commands.kit import migrate_kit
+        from unittest.mock import patch
+
+        custom_content = (
+            '`@cpt:heading:title`\n```toml\nid = "title"\nlevel = 1\n'
+            'template = "Manually Merged"\n```\n`@/cpt:heading:title`\n'
+        )
+
+        with TemporaryDirectory() as td:
+            _, _, ref_dir, config_kit = self._setup_kit(Path(td))
+            with patch("builtins.input", return_value="m"):
+                with patch("cypilot.commands.kit._open_editor_for_marker",
+                           return_value=custom_content):
+                    result = migrate_kit("sdlc", ref_dir, config_kit, interactive=True)
+
+            bp = result["blueprints"][0]
+            self.assertEqual(bp["action"], "merged")
+            self.assertIn("heading:title", bp.get("markers_modified", []))
+            user_text = (config_kit / "blueprints" / "FEAT.md").read_text()
+            self.assertIn("Manually Merged", user_text)
+
+    def test_modify_updated_marker_abort(self):
+        """Interactive 'm' then editor abort → marker declined."""
+        from cypilot.commands.kit import migrate_kit
+        from unittest.mock import patch
+
+        with TemporaryDirectory() as td:
+            _, _, ref_dir, config_kit = self._setup_kit(Path(td))
+            with patch("builtins.input", return_value="m"):
+                with patch("cypilot.commands.kit._open_editor_for_marker",
+                           return_value=None):
+                    result = migrate_kit("sdlc", ref_dir, config_kit, interactive=True)
+
+            bp = result["blueprints"][0]
+            # Updated marker declined (editor aborted) → entire blueprint declined
+            self.assertEqual(bp["action"], "declined")
+
+    def test_modify_skipped_marker(self):
+        """Interactive 'm' on customized (skipped) marker → uses editor result."""
+        from cypilot.commands.kit import migrate_kit
+        from unittest.mock import patch
+
+        custom_content = (
+            '`@cpt:heading:title`\n```toml\nid = "title"\nlevel = 1\n'
+            'template = "Custom Merge"\n```\n`@/cpt:heading:title`\n'
+        )
+
+        with TemporaryDirectory() as td:
+            _, _, ref_dir, config_kit = self._setup_kit(
+                Path(td), user_heading="My Custom",
+            )
+            with patch("builtins.input", return_value="m"):
+                with patch("cypilot.commands.kit._open_editor_for_marker",
+                           return_value=custom_content):
+                    result = migrate_kit("sdlc", ref_dir, config_kit, interactive=True)
+
+            bp = result["blueprints"][0]
+            self.assertEqual(bp["action"], "merged")
+            self.assertIn("heading:title", bp.get("markers_modified", []))
+            user_text = (config_kit / "blueprints" / "FEAT.md").read_text()
+            self.assertIn("Custom Merge", user_text)
+
+    def test_modify_skipped_marker_abort(self):
+        """Interactive 'm' on customized marker, editor abort → keeps user version."""
+        from cypilot.commands.kit import migrate_kit
+        from unittest.mock import patch
+
+        with TemporaryDirectory() as td:
+            _, _, ref_dir, config_kit = self._setup_kit(
+                Path(td), user_heading="My Custom",
+            )
+            with patch("builtins.input", return_value="m"):
+                with patch("cypilot.commands.kit._open_editor_for_marker",
+                           return_value=None):
+                    result = migrate_kit("sdlc", ref_dir, config_kit, interactive=True)
+
+            user_text = (config_kit / "blueprints" / "FEAT.md").read_text()
+            self.assertIn("My Custom", user_text)
+
+    def test_modify_inserted_marker(self):
+        """Interactive 'm' on new (inserted) marker → uses editor result."""
+        from cypilot.commands.kit import migrate_kit
+        from unittest.mock import patch
+        from cypilot.utils import toml_utils
+
+        with TemporaryDirectory() as td:
+            td_p = Path(td)
+            root = td_p / "proj"
+            adapter = _bootstrap_project(root)
+
+            bp_v1 = (
+                '`@cpt:blueprint`\n```toml\nkit = "sdlc"\nartifact = "X"\n```\n`@/cpt:blueprint`\n\n'
+                '`@cpt:heading:title`\n```toml\nid = "title"\nlevel = 1\ntemplate = "Title"\n```\n`@/cpt:heading:title`\n'
+            )
+            bp_v2 = bp_v1 + (
+                '`@cpt:check:newcheck`\n```toml\nid = "newcheck"\n```\nNew check content\n`@/cpt:check:newcheck`\n'
+            )
+
+            ref_dir = adapter / "kits" / "sdlc"
+            ref_bp = ref_dir / "blueprints"
+            ref_bp.mkdir(parents=True)
+            (ref_bp / "X.md").write_text(bp_v2, encoding="utf-8")
+            toml_utils.dump({"version": 2}, ref_dir / "conf.toml")
+
+            prev_bp = ref_dir / ".prev" / "blueprints"
+            prev_bp.mkdir(parents=True)
+            (prev_bp / "X.md").write_text(bp_v1, encoding="utf-8")
+
+            config_kit = adapter / "config" / "kits" / "sdlc"
+            user_bp = config_kit / "blueprints"
+            user_bp.mkdir(parents=True)
+            (user_bp / "X.md").write_text(bp_v1, encoding="utf-8")
+            toml_utils.dump({"version": 1}, config_kit / "conf.toml")
+
+            custom_content = (
+                '`@cpt:check:newcheck`\n```toml\nid = "newcheck"\n```\n'
+                'Edited check content\n`@/cpt:check:newcheck`\n'
+            )
+
+            with patch("builtins.input", return_value="m"):
+                with patch("cypilot.commands.kit._open_editor_for_marker",
+                           return_value=custom_content):
+                    result = migrate_kit("sdlc", ref_dir, config_kit, interactive=True)
+
+            bp = result["blueprints"][0]
+            self.assertEqual(bp["action"], "merged")
+            self.assertIn("check:newcheck", bp.get("markers_modified", []))
+            user_text = (config_kit / "blueprints" / "X.md").read_text()
+            self.assertIn("Edited check content", user_text)
+
+
+class TestModifyOverrides(unittest.TestCase):
+    """modify_overrides in _three_way_merge_blueprint uses custom content."""
+
+    def test_modify_override_replaces_marker(self):
+        from cypilot.commands.kit import _three_way_merge_blueprint
+        old = '`@cpt:heading:t`\n```toml\nid = "t"\n```\nOrig\n`@/cpt:heading:t`\n'
+        new = '`@cpt:heading:t`\n```toml\nid = "t"\n```\nUpdated\n`@/cpt:heading:t`\n'
+        user = '`@cpt:heading:t`\n```toml\nid = "t"\n```\nMy edit\n`@/cpt:heading:t`\n'
+        custom = '`@cpt:heading:t`\n```toml\nid = "t"\n```\nMerged by hand\n`@/cpt:heading:t`\n'
+
+        merged, report = _three_way_merge_blueprint(
+            old, new, user,
+            modify_overrides={"heading:t": custom},
+        )
+        self.assertIn("Merged by hand", merged)
+        self.assertNotIn("My edit", merged)
+        self.assertNotIn("Updated", merged)
+        self.assertIn("heading:t", report["modified"])
+
+    def test_modify_override_takes_precedence_over_force(self):
+        from cypilot.commands.kit import _three_way_merge_blueprint
+        old = '`@cpt:heading:t`\n```toml\nid = "t"\n```\nOrig\n`@/cpt:heading:t`\n'
+        new = '`@cpt:heading:t`\n```toml\nid = "t"\n```\nUpdated\n`@/cpt:heading:t`\n'
+        user = '`@cpt:heading:t`\n```toml\nid = "t"\n```\nMy edit\n`@/cpt:heading:t`\n'
+        custom = '`@cpt:heading:t`\n```toml\nid = "t"\n```\nManual merge\n`@/cpt:heading:t`\n'
+
+        merged, report = _three_way_merge_blueprint(
+            old, new, user,
+            force_keys=frozenset(["heading:t"]),
+            modify_overrides={"heading:t": custom},
+        )
+        self.assertIn("Manual merge", merged)
+        self.assertNotIn("Updated", merged)
+        self.assertIn("heading:t", report["modified"])
+
+    def test_modify_override_with_no_changes_elsewhere(self):
+        from cypilot.commands.kit import _three_way_merge_blueprint
+        old = (
+            '`@cpt:heading:a`\n```toml\nid = "a"\n```\nA\n`@/cpt:heading:a`\n'
+            '`@cpt:heading:b`\n```toml\nid = "b"\n```\nB\n`@/cpt:heading:b`\n'
+        )
+        new = old  # no reference changes
+        user = (
+            '`@cpt:heading:a`\n```toml\nid = "a"\n```\nA custom\n`@/cpt:heading:a`\n'
+            '`@cpt:heading:b`\n```toml\nid = "b"\n```\nB\n`@/cpt:heading:b`\n'
+        )
+        custom_a = '`@cpt:heading:a`\n```toml\nid = "a"\n```\nA merged\n`@/cpt:heading:a`\n'
+
+        merged, report = _three_way_merge_blueprint(
+            old, new, user,
+            modify_overrides={"heading:a": custom_a},
+        )
+        self.assertIn("A merged", merged)
+        self.assertIn("heading:a", report["modified"])
+        # heading:b should be kept as-is
+        self.assertIn("heading:b", report["kept"])
+
+    def test_modified_in_report(self):
+        """Report includes 'modified' key even when empty."""
+        from cypilot.commands.kit import _three_way_merge_blueprint
+        old = '`@cpt:heading:t`\n```toml\nid = "t"\n```\nA\n`@/cpt:heading:t`\n'
+        new = old
+        user = old
+        _, report = _three_way_merge_blueprint(old, new, user)
+        self.assertIn("modified", report)
+        self.assertEqual(report["modified"], [])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -93,7 +93,7 @@ Where:
 
 ### ID Naming Convention
 
-IDs are built by concatenating **slugs** through the hierarchy chain (from `.cypilot/config/artifacts.toml`), followed by the element kind and a descriptive slug.
+IDs are built by concatenating **slugs** through the hierarchy chain (from `{cypilot_path}/config/artifacts.toml`), followed by the element kind and a descriptive slug.
 
 **Slug rules**: lowercase letters, numbers, hyphens only. No spaces, no leading/trailing hyphens. Pattern: `^[a-z0-9]+(-[a-z0-9]+)*$`
 
@@ -270,7 +270,7 @@ def validate_credentials(username, password):
 
 ### Traceability Mode
 
-Traceability mode is configured per artifact/codebase entry in `.cypilot/config/artifacts.toml`:
+Traceability mode is configured per artifact/codebase entry in `{cypilot_path}/config/artifacts.toml`:
 
 - **`FULL`**: markers are allowed and validated
   - Structural checks: pairing, no empty blocks, proper nesting
@@ -376,5 +376,5 @@ def validate_credentials(user, password):
 
 - **Kit specification**: `specs/kit/` — blueprint format, constraint definitions, validation semantics
 - **CDSL**: `{cypilot_path}/.core/architecture/specs/CDSL.md` — behavioral specification language
-- **Artifacts registry**: `.cypilot/config/artifacts.toml` — system, artifact, codebase definitions
+- **Artifacts registry**: `{cypilot_path}/config/artifacts.toml` — system, artifact, codebase definitions
 - **CLI**: `{cypilot_path}/.core/architecture/specs/cli.md` — `validate`, `validate-code`, `list-ids`, `where-defined`, `where-used` commands

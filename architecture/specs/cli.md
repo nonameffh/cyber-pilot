@@ -84,7 +84,7 @@ drivers:
 Cypilot provides a CLI tool available as `cypilot` (full name) and `cpt` (short alias). The tool follows a two-layer architecture:
 
 1. **Global CLI Proxy** — a thin shell installed globally via `pipx`, containing zero business logic. It resolves the correct skill bundle and proxies all commands to it.
-2. **Skill Engine** — the actual command executor, installed either in the project (`.cypilot/`) or in the global cache (`~/.cypilot/cache/`).
+2. **Skill Engine** — the actual command executor, installed either in the project (`{cypilot_path}/`) or in the global cache (`~/.cypilot/cache/`).
 
 All CLI output is JSON to stdout. Human-readable messages go to stderr. This enables piping and programmatic consumption.
 
@@ -99,7 +99,7 @@ pipx install git+https://github.com/cyberfabric/cyber-pilot.git
 After installation, both `cypilot` and `cpt` are available globally.
 
 **Requirements**:
-- Python 3.10+
+- Python 3.11+ (requires `tomllib` from stdlib)
 - `pipx` (recommended) or `pip`
 
 **Optional**:
@@ -113,7 +113,7 @@ After installation, both `cypilot` and `cpt` are available globally.
 On every invocation, the CLI Proxy executes the following sequence:
 
 1. **Cache check** — if `~/.cypilot/cache/` does not exist or is empty, download the latest skill bundle from GitHub before proceeding.
-2. **Target resolution** — if the current directory is inside a project with `.cypilot/` directory, proxy to the project-installed skill. Otherwise, proxy to the cached skill.
+2. **Target resolution** — if the current directory is inside a project with a Cypilot install directory (default: `cypilot/`), proxy to the project-installed skill. Otherwise, proxy to the cached skill.
 3. **Background version check** — start a non-blocking check for newer versions. The check MUST NOT delay the main command. Concurrent checks are prevented via a lock file. A newly available version becomes visible on the next invocation.
 4. **Version notice** — if the cached version is newer than the project-installed version, display a notice to stderr: `Cypilot {cached_version} available (project has {project_version}). Run 'cypilot update' to upgrade.`
 5. **Command execution** — forward all arguments to the resolved skill engine.
@@ -166,7 +166,7 @@ cypilot init [--dir DIR] [--agents AGENTS]
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--dir` | `.cypilot` | Installation directory |
+| `--dir` | `cypilot` | Installation directory |
 | `--agents` | all | Comma-separated agent list: `windsurf,cursor,claude,copilot,openai` |
 
 **Behavior**:
@@ -192,7 +192,7 @@ cypilot init [--dir DIR] [--agents AGENTS]
 ```json
 {
   "status": "ok",
-  "install_dir": ".cypilot",
+  "install_dir": "cypilot",
   "kits_installed": ["sdlc"],
   "agents_configured": ["windsurf", "cursor", "claude", "copilot", "openai"],
   "systems": [{"name": "my-project", "slug": "my-project", "kit": "sdlc"}]
@@ -815,41 +815,50 @@ CI pipelines should check for exit code 2 to detect validation failures.
 ### Project (per repository)
 
 ```
-.cypilot/                   # Install directory (configurable)
-  skills/                   # Skill bundle (copied from cache)
-  kits/                     # Reference kit copies (installed on kit install)
-    sdlc/
-      blueprints/           # Reference blueprints (one .md per artifact kind)
-        PRD.md
-        DESIGN.md
-        ...
-      scripts/              # Kit scripts (not copied to config/)
-  workflows/                # Core workflows (generate.md, analyze.md)
-  requirements/             # Core requirement specs
-  schemas/                  # JSON schemas
-config/
-  AGENTS.md                 # Project-level navigation (WHEN → sysprompt)
-  core.toml                 # Core config (systems, kits, ignore)
-  sysprompts/               # Project-specific system prompts
-  kits/
-    sdlc/                   # Installed kit
-      blueprints/           # User-editable blueprint copies
-        PRD.md
-        DESIGN.md
-        ...
-      constraints.toml     # Generated: kit-wide structural constraints
-      artifacts/            # Generated outputs per artifact kind
-        PRD/
-          template.md
+{cypilot_path}/             # Install directory (default: cypilot/, configurable via --dir)
+  .core/                    # Read-only core files (copied from cache)
+    skills/                 # Skill bundle
+    workflows/              # Core workflows (generate.md, analyze.md)
+    requirements/           # Core requirement specs
+    schemas/                # JSON schemas
+  .gen/                     # Auto-generated files (do not edit)
+    AGENTS.md               # Generated WHEN rules + system prompt content
+    SKILL.md                # Navigation hub routing to per-kit skills
+    kits/
+      sdlc/
+        SKILL.md            # Per-kit skill from @cpt:skill blocks
+        constraints.toml    # Generated from @cpt:heading/@cpt:id markers
+        artifacts/          # Generated outputs per artifact kind
+          PRD/
+            template.md
+            rules.md
+            checklist.md
+            example.md
+          DESIGN/
+            ...
+        codebase/           # Generated from blueprints without artifact key
           rules.md
           checklist.md
-          example.md
-        DESIGN/
+        workflows/          # Generated from @cpt:workflow markers
+        scripts/            # Copied from kit source
+  config/                   # User-editable configuration
+    AGENTS.md               # Project-level navigation (WHEN → sysprompt)
+    SKILL.md                # User-editable skill extensions
+    core.toml               # Core config (systems, kits, ignore)
+    artifacts.toml          # Artifact registry
+    sysprompts/             # Project-specific system prompts
+    kits/
+      sdlc/
+        blueprints/         # User-editable blueprint copies
+          PRD.md
+          DESIGN.md
           ...
-      codebase/             # Generated from blueprints without artifact key
-        rules.md
-        checklist.md
-      workflows/            # Generated from @cpt:workflow markers
+        conf.toml           # Kit version metadata
+  kits/                     # Reference kit copies (read-only, for three-way diff)
+    sdlc/
+      blueprints/           # Reference blueprints
+      scripts/              # Reference scripts
+      conf.toml             # Kit version metadata
 ```
 
 ### Agent Entry Points (generated)
@@ -910,4 +919,4 @@ cypilot --version
 }
 ```
 
-The proxy version is the version of the globally installed CLI proxy (`pipx` package). The cache version is the version of the skill bundle in `~/.cypilot/cache/`. The project version is the version of the skill installed in the project's `.cypilot/` directory (null if not in a project).
+The proxy version is the version of the globally installed CLI proxy (`pipx` package). The cache version is the version of the skill bundle in `~/.cypilot/cache/`. The project version is the version of the skill installed in the project's `{cypilot_path}/` directory (null if not in a project).

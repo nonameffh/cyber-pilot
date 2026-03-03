@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import List
 
 from ..utils.toc import validate_toc
+from ..utils.ui import ui
 
 
 def cmd_validate_toc(argv: List[str]) -> int:
@@ -105,10 +106,37 @@ def cmd_validate_toc(argv: List[str]) -> int:
         "results": results,
     }
 
-    pretty = args.verbose or overall != "PASS"
-    print(json.dumps(output, indent=2 if pretty else None, ensure_ascii=False))
+    ui.result(output, human_fn=lambda d: _human_validate_toc(d))
 
     if total_errors:
         return 2
     return 0
     # @cpt-end:cpt-cypilot-algo-traceability-validation-validate-toc:p1:inst-toc-return
+
+
+def _human_validate_toc(data: dict) -> None:
+    ui.header("Validate TOC")
+    for r in data.get("results", []):
+        path = r.get("file", "?")
+        status = r.get("status", "?")
+        errs = r.get("error_count", 0)
+        warns = r.get("warning_count", 0)
+        if status == "PASS":
+            ui.file_action(path, "unchanged")
+        elif status == "FAIL":
+            ui.warn(f"{path}: {errs} error(s), {warns} warning(s)")
+            for e in r.get("errors", []):
+                ui.substep(f"  ✗ {e}")
+            for w in r.get("warnings", []):
+                ui.substep(f"  ⚠ {w}")
+        else:
+            ui.substep(f"{path}: {status}")
+    overall = data.get("status", "")
+    n = data.get("files_validated", 0)
+    if overall == "PASS":
+        ui.success(f"{n} file(s) validated, all TOCs correct.")
+    elif overall == "FAIL":
+        ui.error(f"{n} file(s) validated, {data.get('error_count', 0)} error(s) found.")
+    else:
+        ui.warn(f"{n} file(s) validated ({overall}).")
+    ui.blank()

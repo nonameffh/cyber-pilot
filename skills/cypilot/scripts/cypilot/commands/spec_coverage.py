@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import List
 
 from ..utils.coverage import FileCoverage, calculate_metrics, generate_report, scan_file_coverage
+from ..utils.ui import ui
 
 
 def cmd_spec_coverage(argv: List[str]) -> int:
@@ -32,7 +33,7 @@ def cmd_spec_coverage(argv: List[str]) -> int:
     # @cpt-begin:cpt-cypilot-flow-spec-coverage-report:p1:inst-load-context
     ctx = get_context()
     if not ctx:
-        print(json.dumps({"status": "ERROR", "message": "Cypilot not initialized. Run 'cypilot init' first."}, ensure_ascii=False))
+        ui.result({"status": "ERROR", "message": "Cypilot not initialized. Run 'cypilot init' first."})
         return 1
 
     meta = ctx.meta
@@ -136,9 +137,29 @@ def cmd_spec_coverage(argv: List[str]) -> int:
 
 
 def _output(data: dict, args: argparse.Namespace) -> None:
-    """Output JSON report to stdout or file."""
-    text = json.dumps(data, indent=2, ensure_ascii=False)
+    """Output report to stdout (JSON or human) or file."""
     if getattr(args, "output", None):
+        text = json.dumps(data, indent=2, ensure_ascii=False)
         Path(args.output).write_text(text, encoding="utf-8")
+        return
+    ui.result(data, human_fn=lambda d: _human_spec_coverage(d))
+
+
+def _human_spec_coverage(data: dict) -> None:
+    summary = data.get("summary", {})
+    status = data.get("status", "")
+    ui.header("Spec Coverage")
+    ui.detail("Files", f"{summary.get('covered_files', 0)}/{summary.get('total_files', 0)} covered")
+    ui.detail("Coverage", f"{summary.get('coverage_pct', 0):.1f}%")
+    ui.detail("Granularity", f"{summary.get('granularity_score', 0):.4f}")
+    failures = data.get("threshold_failures", [])
+    if failures:
+        for f in failures:
+            ui.warn(f)
+    if status == "PASS":
+        ui.success("All thresholds met.")
+    elif status == "FAIL":
+        ui.error("Threshold check failed.")
     else:
-        print(text)
+        ui.info(f"Status: {status}")
+    ui.blank()

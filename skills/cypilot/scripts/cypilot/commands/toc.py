@@ -15,6 +15,7 @@ from cypilot.utils.toc import (
     process_file as _process_file,
     validate_toc as _validate_toc,
 )
+from ..utils.ui import ui
 
 
 def cmd_toc(argv: List[str]) -> int:
@@ -109,9 +110,39 @@ def cmd_toc(argv: List[str]) -> int:
     elif any(r["status"] == "ERROR" for r in results):
         output["status"] = "PARTIAL" if len(results) > 1 else "ERROR"
 
-    print(json.dumps(output, indent=2, ensure_ascii=False))
+    ui.result(output, human_fn=lambda d: _human_toc(d))
 
     if validation_errors:
         return 2
     # @cpt-end:cpt-cypilot-flow-developer-experience-toc:p1:inst-toc-gen-return
     return 1 if output["status"] == "ERROR" else 0
+
+
+def _human_toc(data: dict) -> None:
+    ui.header("Table of Contents")
+    for r in data.get("results", []):
+        path = r.get("file", "?")
+        status = r.get("status", "?")
+        if status == "UPDATED":
+            ui.file_action(path, "updated")
+        elif status == "CREATED":
+            ui.file_action(path, "created")
+        elif status == "UNCHANGED":
+            ui.file_action(path, "unchanged")
+        elif status == "ERROR":
+            ui.warn(f"{path}: {r.get('message', 'error')}")
+        else:
+            ui.substep(f"{path}: {status}")
+        val = r.get("validation", {})
+        if val.get("status") == "FAIL":
+            for detail in val.get("details", []):
+                ui.warn(f"  {detail}")
+    n = data.get("files_processed", 0)
+    overall = data.get("status", "")
+    if overall in ("OK", "PASS"):
+        ui.success(f"{n} file(s) processed.")
+    elif overall == "VALIDATION_FAIL":
+        ui.error(f"{n} file(s) processed, validation errors found.")
+    else:
+        ui.warn(f"{n} file(s) processed ({overall}).")
+    ui.blank()

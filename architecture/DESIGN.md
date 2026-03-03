@@ -343,7 +343,7 @@ At the bottom is the **Kit layer**. The **Kit Manager** handles kit installation
 | Layer | Responsibility | Technology |
 |-------|---------------|------------|
 | Global CLI Proxy | Installation entry point, cache management, version checks, command routing | Python (pipx-installable package) |
-| Core Skill Engine | Command dispatch, JSON output, deterministic execution, workflow loading | Python 3.10+ stdlib |
+| Core Skill Engine | Command dispatch, JSON output, deterministic execution, workflow loading | Python 3.11+ stdlib |
 | Kit System | Domain-specific blueprints, generated resources (templates, rules, checklists, workflows) | Blueprint `.md` files, Blueprint Processor |
 | Config Management | Config directory operations, schema validation, deterministic serialization | TOML, Python stdlib (tomllib 3.11+) |
 | Agent Integration | Entry point generation in native agent formats | Python, Markdown templates |
@@ -416,7 +416,7 @@ Every check, validation, and enforcement MUST be implementable as a deterministi
 
 - [ ] `p1` - **ID**: `cpt-cypilot-principle-zero-harm`
 
-Adopting Cypilot MUST NOT impose costs on the development workflow. No mandatory file renames, no forced directory structures outside `.cypilot/` and `config/`, no blocking CI gates by default, no slowdowns to existing processes. Every feature is opt-in and additive. If a team removes Cypilot, their project continues to work exactly as before — only the `.cypilot/` directory and generated agent files are left behind.
+Adopting Cypilot MUST NOT impose costs on the development workflow. No mandatory file renames, no forced directory structures outside the Cypilot install directory and `config/`, no blocking CI gates by default, no slowdowns to existing processes. Every feature is opt-in and additive. If a team removes Cypilot, their project continues to work exactly as before — only the `{cypilot_path}/` directory and generated agent files are left behind.
 
 #### No Manual Maintenance
 
@@ -430,7 +430,7 @@ Nothing that can be generated MUST require manual upkeep. Agent entry points are
 
 - [ ] `p1` - **ID**: `cpt-cypilot-constraint-python-stdlib`
 
-Core skill engine uses Python 3.10+ standard library only. No third-party dependencies in core. This ensures the tool works in any Python 3.10+ environment without dependency conflicts. Kits may declare their own dependencies, managed separately.
+Core skill engine uses Python 3.11+ standard library only (requires `tomllib` from stdlib). No third-party dependencies in core. This ensures the tool works in any Python 3.11+ environment without dependency conflicts. Kits may declare their own dependencies, managed separately.
 
 #### Markdown as Contract
 
@@ -466,8 +466,8 @@ Validation rules cannot be bypassed or weakened in STRICT mode. The deterministi
 
 **Machine-Readable Schemas**:
 - **Config schema**: `{cypilot_path}/config/core.toml` structure defined by [core-config.schema.json]({cypilot_path}/.core/schemas/core-config.schema.json)
-- **Kit constraints schema**: [kit-constraints.schema.json](.cypilot/schemas/kit-constraints.schema.json)
-- **Artifact registry**: [artifacts.toml](.cypilot/config/artifacts.toml) — system, autodetect, and codebase definitions
+- **Kit constraints schema**: [kit-constraints.schema.json]({cypilot_path}/.core/schemas/kit-constraints.schema.json)
+- **Artifact registry**: [artifacts.toml]({cypilot_path}/config/artifacts.toml) — system, autodetect, and codebase definitions
 - **Python types**: `skills/cypilot/scripts/cypilot/` — dataclass definitions for in-memory models
 
 **Specifications** (see [specs/](./specs/) for full documents):
@@ -483,7 +483,7 @@ Validation rules cannot be bypassed or weakened in STRICT mode. The deterministi
 - **Identifiers & Traceability**: [traceability.md](./specs/traceability.md) — ID formats, naming conventions, task markers, code traceability markers, validation
 - **CDSL**: [CDSL.md](./specs/CDSL.md) — behavioral specification language syntax
 - **Artifacts registry**: [artifacts-registry.md](./specs/artifacts-registry.md) — artifacts.toml structure and agent operations
-- **System prompts**: [sysprompts.md](./specs/sysprompts.md) — .cypilot/config/sysprompts and config/AGENTS.md format
+- **System prompts**: [sysprompts.md](./specs/sysprompts.md) — `{cypilot_path}/config/sysprompts/` and `config/AGENTS.md` format
 
 **Core Entities**:
 
@@ -497,7 +497,7 @@ Validation rules cannot be bypassed or weakened in STRICT mode. The deterministi
 | AgentEntryPoint | Generated file in an agent's native format (workflow proxy, skill shim, or rule file) | Generated into `.windsurf/`, `.cursor/`, etc. |
 | Blueprint | Single-source-of-truth Markdown file per artifact kind with embedded `@cpt:` metadata markers; generates all kit resources | Source: `kits/<slug>/blueprints/<KIND>.md`, Installed: `{cypilot_path}/config/kits/<slug>/blueprints/<KIND>.md` |
 | Constraint | Kit-wide rules for ID kinds, headings, and cross-artifact references | Generated from `@cpt:heading`/`@cpt:id` markers across all artifact blueprints → `{cypilot_path}/.gen/kits/<slug>/constraints.toml` |
-| Workflow | A Markdown file with frontmatter, phases, and validation criteria | `.cypilot/workflows/` |
+| Workflow | A Markdown file with frontmatter, phases, and validation criteria | `{cypilot_path}/.core/workflows/` |
 
 **Relationships**:
 - System → Kit: each system is assigned to exactly one kit (by slug)
@@ -932,11 +932,11 @@ No internal module dependencies beyond the component relationships documented in
 sequenceDiagram
     User->>CLI Proxy: cypilot init
     CLI Proxy->>Skill Engine: init command
-    Skill Engine->>Skill Engine: detect existing .cypilot/
+    Skill Engine->>Skill Engine: detect existing Cypilot install
     alt existing project detected
         Skill Engine-->>User: "Cypilot already initialized. Use 'cypilot update' to upgrade."
     else new project
-        Skill Engine->>User: "Install directory?" (default: .cypilot)
+        Skill Engine->>User: "Install directory?" (default: cypilot)
         User-->>Skill Engine: confirms
         Skill Engine->>User: "Which agents?" (default: all)
         User-->>Skill Engine: selects agents
@@ -961,7 +961,8 @@ sequenceDiagram
 
 ```markdown
 <!-- @cpt:root-agents -->
-ALWAYS open @/.cypilot/config/AGENTS.md FIRST
+ALWAYS open and follow `{cypilot_path}/.gen/AGENTS.md` FIRST
+ALWAYS open and follow `{cypilot_path}/config/AGENTS.md` WHEN it exists
 <!-- @/cpt:root-agents -->
 ```
 
@@ -1114,7 +1115,7 @@ Not applicable — Cypilot does not use a database. All persistent state is stor
 - **`{cypilot_path}/config/kits/<slug>/*.toml`** — per-kit config files (autodetect rules, constraints, settings)
 - **`~/.cypilot/cache/`** — global skill bundle cache
 - **Markdown artifacts** — source of truth for design (PRD.md, DESIGN.md, etc.)
-- **`.cypilot/config/artifacts.toml`** — artifact registry (systems, artifacts, codebases)
+- **`{cypilot_path}/config/artifacts.toml`** — artifact registry (systems, artifacts, codebases)
 
 ## 4. Additional context
 
@@ -1148,13 +1149,13 @@ All configuration and constraint files are migrating from JSON to TOML:
 | `config/core.json` | `{cypilot_path}/config/core.toml` | Config Manager |
 | `{cypilot_path}/config/kits/<slug>/*.json` | `{cypilot_path}/config/kits/<slug>/*.toml` | Kit plugins |
 | `constraints.json` | `constraints.toml` | Blueprint Processor (generated) |
-| `.cypilot-adapter/artifacts.toml` | `.cypilot/config/artifacts.toml` | Config Manager |
+| `.cypilot-adapter/artifacts.toml` | `{cypilot_path}/config/artifacts.toml` | Config Manager |
 
 **Rationale**: TOML is human-readable, supports comments, and aligns with the blueprint marker format (which already uses TOML for all `@cpt:` block configurations). JSON remains the CLI output format (stdout).
 
 **Migrator** (`cypilot migrate-config`):
 1. Detect existing `.json` config files in `config/` and `.cypilot-adapter/`
-   - `.cypilot-adapter/artifacts.toml` migrates to `.cypilot/config/artifacts.toml` (new location)
+   - `.cypilot-adapter/artifacts.toml` migrates to `{cypilot_path}/config/artifacts.toml` (new location)
 2. For each file: parse JSON → serialize as TOML → write `.toml` alongside `.json`
 3. Validate the new `.toml` file against the schema
 4. If validation passes: remove the `.json` file
@@ -1194,8 +1195,8 @@ The following design domains are not applicable to Cypilot and are explicitly ex
 ## 5. Traceability
 
 - **PRD**: [PRD.md](./PRD.md)
-- **ADRs**: [ADR/](./ADR/) (none created yet)
-- **Features**: [features/](./features/) — `core-infra.md`, `blueprint-system.md`, `traceability-validation.md`, `sdlc-kit.md`, `agent-integration.md`, `pr-workflows.md`, `version-config.md`, `developer-experience.md`
+- **ADRs**: none created yet
+- **Features**: [features/](./features/) — `core-infra.md`, `blueprint-system.md`, `traceability-validation.md`, `sdlc-kit.md`, `agent-integration.md`, `pr-workflows.md`, `version-config.md`, `developer-experience.md`, `spec-coverage.md`, `v2-v3-migration.md`
 
 ### Specifications
 

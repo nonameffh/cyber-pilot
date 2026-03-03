@@ -138,6 +138,12 @@ def _cmd_migrate_config(argv: List[str]) -> int:
 def main(argv: Optional[List[str]] = None) -> int:
     argv_list = list(argv) if argv is not None else sys.argv[1:]
 
+    # Extract global --json flag (must come before command dispatch)
+    from .utils.ui import set_json_mode
+    if "--json" in argv_list:
+        argv_list.remove("--json")
+        set_json_mode(True)
+
     # Load global Cypilot context on startup (templates, systems, etc.)
     # Always reload context based on current working directory (no caching)
     from .utils.context import CypilotContext, set_context
@@ -164,35 +170,59 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     # Handle --help / -h at top level (or no subcommand)
     if not argv_list or argv_list[0] in ("-h", "--help"):
-        print("usage: cypilot <command> [options]")
-        print()
-        print("Cypilot CLI - artifact validation and traceability tool")
-        print()
-        print("Validation commands:")
-        for c in analysis_commands:
-            print(f"  {c}")
-        print()
-        print("Kit management commands:")
-        for c in kit_commands:
-            print(f"  {c}")
-        print()
-        print("Search and utility commands:")
-        for c in search_commands:
-            print(f"  {c}")
-        print()
-        print("Migration commands:")
-        for c in migration_commands:
-            print(f"  {c}")
-        print()
-        print("Utility commands:")
-        for c in utility_commands:
-            print(f"  {c}")
-        print()
-        print("Legacy aliases:")
-        print("  validate-code → validate")
-        print("  validate-rules → validate-kits")
-        print()
-        print("Run 'cypilot <command> --help' for command-specific options.")
+        from .utils.ui import ui, is_json_mode
+        _cmd_descriptions = {
+            "validate": "Validate artifacts and code traceability",
+            "validate-kits": "Validate kit configuration and blueprints",
+            "validate-toc": "Validate Table of Contents in Markdown files",
+            "spec-coverage": "Measure CDSL marker coverage in code",
+            "kit": "Kit management (install, update, migrate)",
+            "generate-resources": "Regenerate .gen/ outputs from blueprints",
+            "init": "Initialize Cypilot in a project",
+            "update": "Update .core/ and regenerate .gen/",
+            "agents": "Generate IDE/agent integration files",
+            "list-ids": "List all Cypilot IDs from artifacts",
+            "list-id-kinds": "List ID kinds with counts",
+            "get-content": "Get content block for a Cypilot ID",
+            "where-defined": "Find where an ID is defined",
+            "where-used": "Find all references to an ID",
+            "info": "Show project Cypilot configuration",
+            "self-check": "Validate kit examples against templates",
+            "toc": "Generate/update Table of Contents",
+            "migrate": "Migrate v2 project to v3",
+            "migrate-config": "Convert JSON configs to TOML",
+        }
+        _sections = [
+            ("Setup & Configuration", ["init", "update", "info", "agents"]),
+            ("Validation", ["validate", "validate-kits", "validate-toc", "self-check", "spec-coverage"]),
+            ("Search & Navigation", ["list-ids", "list-id-kinds", "get-content", "where-defined", "where-used"]),
+            ("Kit Management", ["kit", "generate-resources"]),
+            ("Utility", ["toc"]),
+            ("Migration", ["migrate", "migrate-config"]),
+        ]
+        if is_json_mode():
+            import json as _json
+            print(_json.dumps({
+                "usage": "cypilot <command> [options]",
+                "commands": _cmd_descriptions,
+                "sections": {name: cmds for name, cmds in _sections},
+            }, indent=2, ensure_ascii=False))
+        else:
+            ui.header("Cypilot CLI")
+            ui.info("Artifact validation, traceability, and kit management tool.")
+            ui.blank()
+            for section_name, cmds in _sections:
+                ui.step(section_name)
+                for c in cmds:
+                    desc = _cmd_descriptions.get(c, "")
+                    sys.stderr.write(f"      {c:<22} {desc}\n")
+                ui.blank()
+            ui.info("Global flags:")
+            sys.stderr.write(f"      {'--json':<22} Machine-readable JSON output (for AI agents)\n")
+            ui.blank()
+            ui.hint("Run 'cpt <command> --help' for command-specific options.")
+            ui.hint("Legacy aliases: validate-code → validate, validate-rules → validate-kits")
+            ui.blank()
         return 0
 
     # @cpt-begin:cpt-cypilot-algo-core-infra-route-command:p1:inst-parse-command
@@ -272,11 +302,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     else:
         # @cpt-begin:cpt-cypilot-algo-core-infra-route-command:p1:inst-if-no-handler
         # @cpt-begin:cpt-cypilot-algo-core-infra-route-command:p1:inst-return-unknown
-        print(json.dumps({
-            "status": "ERROR",
-            "message": f"Unknown command: {cmd}",
-            "available": all_commands,
-        }, indent=None, ensure_ascii=False))
+        from .utils.ui import ui
+        ui.result(
+            {"status": "ERROR", "message": f"Unknown command: {cmd}", "available": all_commands},
+            human_fn=lambda d: (
+                ui.error(f"Unknown command: {cmd}"),
+                ui.hint(f"Available commands: {', '.join(all_commands)}"),
+                ui.hint("Run 'cpt --help' for usage."),
+            ),
+        )
         return 1
         # @cpt-end:cpt-cypilot-algo-core-infra-route-command:p1:inst-return-unknown
         # @cpt-end:cpt-cypilot-algo-core-infra-route-command:p1:inst-if-no-handler

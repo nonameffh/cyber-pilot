@@ -40,6 +40,7 @@ from .init import (
     _inject_root_agents,
     _inject_root_claude,
 )
+from ..utils.ui import ui
 
 
 def cmd_update(argv: List[str]) -> int:
@@ -69,35 +70,52 @@ def cmd_update(argv: List[str]) -> int:
     project_root = Path(args.project_root).resolve() if args.project_root else find_project_root(cwd)
 
     if project_root is None:
-        print(json.dumps({
-            "status": "ERROR",
-            "message": "No project root found. Run 'cpt init' first.",
-        }, indent=2, ensure_ascii=False))
+        ui.result(
+            {"status": "ERROR", "message": "No project root found. Run 'cpt init' first."},
+            human_fn=lambda d: (
+                ui.error("No project root found."),
+                ui.hint("Initialize Cypilot first:  cpt init"),
+                ui.blank(),
+            ),
+        )
         return 1
 
     install_rel = _read_cypilot_var(project_root)
     if not install_rel:
-        print(json.dumps({
-            "status": "ERROR",
-            "message": "Cypilot not initialized in this project. Run 'cpt init' first.",
-            "project_root": project_root.as_posix(),
-        }, indent=2, ensure_ascii=False))
+        ui.result(
+            {"status": "ERROR", "message": "Cypilot not initialized in this project. Run 'cpt init' first.", "project_root": project_root.as_posix()},
+            human_fn=lambda d: (
+                ui.error("Cypilot is not initialized in this project."),
+                ui.detail("Project root", project_root.as_posix()),
+                ui.hint("Initialize first:  cpt init"),
+                ui.blank(),
+            ),
+        )
         return 1
 
     cypilot_dir = (project_root / install_rel).resolve()
     if not cypilot_dir.is_dir():
-        print(json.dumps({
-            "status": "ERROR",
-            "message": f"Cypilot directory not found: {cypilot_dir}",
-            "project_root": project_root.as_posix(),
-        }, indent=2, ensure_ascii=False))
+        ui.result(
+            {"status": "ERROR", "message": f"Cypilot directory not found: {cypilot_dir}", "project_root": project_root.as_posix()},
+            human_fn=lambda d: (
+                ui.error(f"Cypilot directory not found: {cypilot_dir}"),
+                ui.hint("Reinitialize:  cpt init --force"),
+                ui.blank(),
+            ),
+        )
         return 1
 
     if not CACHE_DIR.is_dir():
-        print(json.dumps({
-            "status": "ERROR",
-            "message": f"Cache not found at {CACHE_DIR}. Run 'cpt update' (proxy downloads first).",
-        }, indent=2, ensure_ascii=False))
+        ui.result(
+            {"status": "ERROR", "message": f"Cache not found at {CACHE_DIR}. Run 'cpt update' (proxy downloads first)."},
+            human_fn=lambda d: (
+                ui.error("Cypilot cache not found."),
+                ui.detail("Expected at", str(CACHE_DIR)),
+                ui.hint("The proxy layer downloads the cache before forwarding to this command."),
+                ui.hint("If running directly, ensure cache exists at the path above."),
+                ui.blank(),
+            ),
+        )
         return 1
     # @cpt-end:cpt-cypilot-flow-version-config-update:p1:inst-resolve-project
 
@@ -119,12 +137,12 @@ def cmd_update(argv: List[str]) -> int:
                 interactive=not args.no_interactive and not args.yes and sys.stdin.isatty(),
             )
             if not ack:
-                print(json.dumps({"status": "ABORTED", "message": "Update aborted by user."}, indent=2))
+                ui.result({"status": "ABORTED", "message": "Update aborted by user."})
                 return 0
 
     # @cpt-begin:cpt-cypilot-flow-version-config-update:p1:inst-replace-core
     # ── Step 1: Replace .core/ from cache (always force) ─────────────────
-    sys.stderr.write("Step 1: Updating .core/ from cache...\n")
+    ui.step("Updating core files from cache...")
     if not args.dry_run:
         cypilot_dir.mkdir(parents=True, exist_ok=True)
         copy_results = _copy_from_cache(CACHE_DIR, cypilot_dir, force=True)
@@ -137,12 +155,13 @@ def cmd_update(argv: List[str]) -> int:
     else:
         copy_results = {d: "dry_run" for d in COPY_DIRS}
     actions["core_update"] = copy_results
-    sys.stderr.write(f"  {copy_results}\n")
+    for name, action in copy_results.items():
+        ui.file_action(f".core/{name}/", action)
     # @cpt-end:cpt-cypilot-flow-version-config-update:p1:inst-replace-core
 
     # @cpt-begin:cpt-cypilot-flow-version-config-update:p1:inst-update-kits
     # ── Step 2: Update kits (ref copy, migrate, regen .gen/) ─────────────
-    sys.stderr.write("Step 2: Updating kits...\n")
+    ui.step("Updating kits...")
     from .kit import update_kit
 
     kits_cache_dir = CACHE_DIR / "kits"
@@ -196,32 +215,26 @@ def cmd_update(argv: List[str]) -> int:
             files_written = gen.get("files_written", 0) if isinstance(gen, dict) else 0
 
             if ver_status == "created":
-                sys.stderr.write(f"  {kit_slug}: first install, {files_written} files generated\n")
+                ui.substep(f"{kit_slug}: first install, {files_written} files generated")
             elif ver_status == "migrated":
-                sys.stderr.write(f"  {kit_slug}: migrated {ver.get('kit_version', '')}\n")
+                ui.substep(f"{kit_slug}: migrated {ver.get('kit_version', '')}")
                 for bp_r in ver.get("blueprints", []):
                     action = bp_r.get("action", "")
                     bp_name = bp_r.get("blueprint", "")
                     if action == "merged":
                         updated = bp_r.get("markers_updated", [])
                         skipped = bp_r.get("markers_skipped", [])
-                        sys.stderr.write(
-                            f"    {bp_name}: {len(updated)} markers updated"
-                        )
+                        msg = f"      {bp_name}: {len(updated)} markers updated"
                         if skipped:
-                            sys.stderr.write(
-                                f", {len(skipped)} skipped (customized)"
-                            )
-                        sys.stderr.write("\n")
+                            msg += f", {len(skipped)} skipped (customized)"
+                        ui.substep(msg)
                     elif action == "created":
-                        sys.stderr.write(f"    {bp_name}: created (new)\n")
+                        ui.substep(f"      {bp_name}: created (new)")
                     elif action == "skipped_all_customized":
-                        sys.stderr.write(
-                            f"    {bp_name}: all markers customized, skipped\n"
-                        )
-                sys.stderr.write(f"    {files_written} files generated\n")
+                        ui.substep(f"      {bp_name}: all markers customized, skipped")
+                ui.substep(f"      {files_written} files generated")
             elif ver_status == "current":
-                sys.stderr.write(f"  {kit_slug}: up to date, {files_written} files generated\n")
+                ui.substep(f"{kit_slug}: up to date, {files_written} files generated")
 
     actions["kits"] = kit_results
     # @cpt-end:cpt-cypilot-flow-version-config-update:p1:inst-update-kits
@@ -268,7 +281,7 @@ def cmd_update(argv: List[str]) -> int:
 
     # @cpt-begin:cpt-cypilot-flow-version-config-update:p1:inst-ensure-scaffold
     # ── Step 5: Ensure config/ scaffold (create only if missing) ─────────
-    sys.stderr.write("Step 5: Ensuring config/ scaffold...\n")
+    ui.step("Ensuring config/ scaffold...")
     if not args.dry_run:
         config_dir.mkdir(parents=True, exist_ok=True)
         _ensure_file(config_dir / "README.md", _config_readme_content(), actions, "config_readme")
@@ -298,7 +311,7 @@ def cmd_update(argv: List[str]) -> int:
     # @cpt-begin:cpt-cypilot-flow-version-config-update:p1:inst-return-report
     # ── Report ───────────────────────────────────────────────────────────
     status = "PASS" if not errors and not warnings else "WARN"
-    result: Dict[str, Any] = {
+    update_result: Dict[str, Any] = {
         "status": status,
         "project_root": project_root.as_posix(),
         "cypilot_dir": cypilot_dir.as_posix(),
@@ -306,11 +319,11 @@ def cmd_update(argv: List[str]) -> int:
         "actions": actions,
     }
     if errors:
-        result["errors"] = errors
+        update_result["errors"] = errors
     if warnings:
-        result["warnings"] = warnings
+        update_result["warnings"] = warnings
 
-    print(json.dumps(result, indent=2, ensure_ascii=False))
+    ui.result(update_result, human_fn=lambda d: _human_update_ok(d, errors, warnings))
     # @cpt-end:cpt-cypilot-flow-version-config-update:p1:inst-return-report
     return 0
 
@@ -438,3 +451,34 @@ def _show_core_whatsnew(
     return response != "q"
 
 
+# ---------------------------------------------------------------------------
+# Human-friendly formatter
+# ---------------------------------------------------------------------------
+
+def _human_update_ok(
+    data: Dict[str, Any],
+    errors: List[Dict[str, str]],
+    warnings: List[str],
+) -> None:
+    dry = data.get("dry_run", False)
+    status = data.get("status", "")
+
+    if errors:
+        ui.blank()
+        ui.warn("Update completed with errors:")
+        for err in errors:
+            if isinstance(err, dict):
+                ui.substep(f"• {err.get('path', '?')}: {err.get('error', '?')}")
+            else:
+                ui.substep(f"• {err}")
+    if warnings:
+        for w in warnings:
+            ui.warn(w)
+
+    if dry:
+        ui.success("Dry run complete — no files were written.")
+    elif status == "PASS":
+        ui.success("Update complete!")
+    else:
+        ui.warn("Update finished with warnings (see above).")
+    ui.blank()

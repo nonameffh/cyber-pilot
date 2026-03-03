@@ -710,15 +710,15 @@ Before running the SDLC-specific checks:
 ````
 `@/cpt:checklist`
 
-> **`@cpt:checklist_epilogue`** — Checklist epilogue. Static markdown appended at the end of `{cypilot_path}/.gen/kits/sdlc/codebase/checklist.md`.
+> **`@cpt:checklist_epilogue:default`** — Checklist epilogue. Static markdown appended at the end of `{cypilot_path}/.gen/kits/sdlc/codebase/checklist.md`.
 
-`@cpt:checklist_epilogue`
+`@cpt:checklist_epilogue:default`
 ````markdown
 ---
 
 Use `{cypilot_path}/.core/requirements/code-checklist.md` for all generic code quality checks.
 ````
-`@/cpt:checklist_epilogue`
+`@/cpt:checklist_epilogue:default`
 
 > **`@cpt:check`** — Checklist item. TOML defines id/domain/severity; markdown defines the check criteria. Output: `{cypilot_path}/.gen/kits/sdlc/codebase/checklist.md`.
 

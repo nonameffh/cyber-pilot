@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 from ..utils.document import scan_cpt_ids
+from ..utils.ui import ui
 
 
 # @cpt-flow:cpt-cypilot-flow-traceability-validation-query:p1
@@ -16,7 +17,7 @@ def cmd_where_defined(argv: List[str]) -> int:
 
     target_id = str(args.id).strip()
     if not target_id:
-        print(json.dumps({"status": "ERROR", "message": "ID cannot be empty"}, indent=None, ensure_ascii=False))
+        ui.result({"status": "ERROR", "message": "ID cannot be empty"})
         return 1
 
     # Collect artifacts to scan: (artifact_path, artifact_kind)
@@ -26,14 +27,14 @@ def cmd_where_defined(argv: List[str]) -> int:
         # Load context from artifact's location
         artifact_path = Path(args.artifact).resolve()
         if not artifact_path.exists():
-            print(json.dumps({"status": "ERROR", "message": f"Artifact not found: {artifact_path}"}, indent=None, ensure_ascii=False))
+            ui.result({"status": "ERROR", "message": f"Artifact not found: {artifact_path}"})
             return 1
 
         from ..utils.context import CypilotContext
 
         ctx = CypilotContext.load(artifact_path.parent)
         if not ctx:
-            print(json.dumps({"status": "ERROR", "message": "Cypilot not initialized. Run 'cypilot init' first."}, indent=None, ensure_ascii=False))
+            ui.result({"status": "ERROR", "message": "Cypilot not initialized. Run 'cypilot init' first."})
             return 1
 
         meta = ctx.meta
@@ -49,7 +50,7 @@ def cmd_where_defined(argv: List[str]) -> int:
                 artifact_meta, _system_node = result
                 artifacts_to_scan.append((artifact_path, str(artifact_meta.kind)))
         if not artifacts_to_scan:
-            print(json.dumps({"status": "ERROR", "message": f"Artifact not in Cypilot registry: {args.artifact}"}, indent=None, ensure_ascii=False))
+            ui.result({"status": "ERROR", "message": f"Artifact not in Cypilot registry: {args.artifact}"})
             return 1
     else:
         # Use global context
@@ -57,7 +58,7 @@ def cmd_where_defined(argv: List[str]) -> int:
 
         ctx = get_context()
         if not ctx:
-            print(json.dumps({"status": "ERROR", "message": "Cypilot not initialized. Run 'cypilot init' first."}, indent=None, ensure_ascii=False))
+            ui.result({"status": "ERROR", "message": "Cypilot not initialized. Run 'cypilot init' first."})
             return 1
 
         meta = ctx.meta
@@ -70,13 +71,7 @@ def cmd_where_defined(argv: List[str]) -> int:
                 artifacts_to_scan.append((artifact_path, str(artifact_meta.kind)))
 
     if not artifacts_to_scan:
-        print(json.dumps({
-            "status": "NOT_FOUND",
-            "id": target_id,
-            "artifacts_scanned": 0,
-            "count": 0,
-            "definitions": [],
-        }, indent=None, ensure_ascii=False))
+        ui.result({"status": "NOT_FOUND", "id": target_id, "artifacts_scanned": 0, "count": 0, "definitions": []})
         return 0
 
     # @cpt-begin:cpt-cypilot-flow-traceability-validation-query:p1:inst-if-where-def
@@ -98,22 +93,10 @@ def cmd_where_defined(argv: List[str]) -> int:
             })
 
     if not definitions:
-        print(json.dumps({
-            "status": "NOT_FOUND",
-            "id": target_id,
-            "artifacts_scanned": len(artifacts_to_scan),
-            "count": 0,
-            "definitions": [],
-        }, indent=None, ensure_ascii=False))
+        ui.result({"status": "NOT_FOUND", "id": target_id, "artifacts_scanned": len(artifacts_to_scan), "count": 0, "definitions": []})
         return 2
 
     status = "FOUND" if len(definitions) == 1 else "AMBIGUOUS"
-    print(json.dumps({
-        "status": status,
-        "id": target_id,
-        "artifacts_scanned": len(artifacts_to_scan),
-        "count": len(definitions),
-        "definitions": definitions,
-    }, indent=None, ensure_ascii=False))
+    ui.result({"status": status, "id": target_id, "artifacts_scanned": len(artifacts_to_scan), "count": len(definitions), "definitions": definitions})
     # @cpt-end:cpt-cypilot-flow-traceability-validation-query:p1:inst-if-where-def
     return 0 if status == "FOUND" else 2

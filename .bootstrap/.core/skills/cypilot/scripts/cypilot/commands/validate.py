@@ -8,6 +8,7 @@ from ..utils.codebase import CodeFile, cross_validate_code
 from ..utils.constraints import ArtifactRecord, cross_validate_artifacts, error as constraints_error, validate_artifact_file
 from ..utils.document import scan_cdsl_instructions, scan_cpt_ids
 from ..utils.fixing import enrich_issues
+from ..utils.ui import ui
 
 
 # @cpt-flow:cpt-cypilot-flow-traceability-validation-validate:p1
@@ -36,7 +37,7 @@ def cmd_validate(argv: List[str]) -> int:
     ctx = get_context()
     if not ctx:
         # @cpt-begin:cpt-cypilot-state-traceability-validation-report:p1:inst-error
-        print(json.dumps({"status": "ERROR", "message": "Cypilot not initialized. Run 'cypilot init' first."}, indent=None, ensure_ascii=False))
+        ui.result({"status": "ERROR", "message": "Cypilot not initialized. Run 'cypilot init' first."})
         return 1
         # @cpt-end:cpt-cypilot-state-traceability-validation-report:p1:inst-error
 
@@ -66,7 +67,7 @@ def cmd_validate(argv: List[str]) -> int:
                     "message": "self-check failed (templates/examples are inconsistent)",
                     "self_check": report,
                 }
-                print(json.dumps(out, indent=2, ensure_ascii=False))
+                ui.result(out)
                 return 2 if rc == 2 else 1
         except Exception as e:
             out = {
@@ -74,7 +75,7 @@ def cmd_validate(argv: List[str]) -> int:
                 "message": "self-check failed to run",
                 "error": str(e),
             }
-            print(json.dumps(out, indent=2, ensure_ascii=False))
+            ui.result(out)
             return 1
     # @cpt-end:cpt-cypilot-flow-traceability-validation-validate:p1:inst-self-check
     
@@ -96,7 +97,7 @@ def cmd_validate(argv: List[str]) -> int:
     if args.artifact:
         artifact_path = Path(args.artifact).resolve()
         if not artifact_path.exists():
-            print(json.dumps({"status": "ERROR", "message": f"Artifact not found: {artifact_path}"}, indent=None, ensure_ascii=False))
+            ui.result({"status": "ERROR", "message": f"Artifact not found: {artifact_path}"})
             return 1
 
         # Load context from artifact's location
@@ -104,7 +105,7 @@ def cmd_validate(argv: List[str]) -> int:
 
         ctx = CypilotContext.load(artifact_path.parent)
         if not ctx:
-            print(json.dumps({"status": "ERROR", "message": "Cypilot not initialized"}, indent=None, ensure_ascii=False))
+            ui.result({"status": "ERROR", "message": "Cypilot not initialized"})
             return 1
 
         # Refresh context-level errors for this context.
@@ -136,7 +137,7 @@ def cmd_validate(argv: List[str]) -> int:
                     template_path = (project_root / template_path_str).resolve()
                     artifacts_to_validate.append((artifact_path, template_path, artifact_meta.kind, artifact_meta.traceability, system_node.kit))
         if not artifacts_to_validate:
-            print(json.dumps({"status": "ERROR", "message": f"Artifact not in Cypilot registry: {args.artifact}"}, indent=None, ensure_ascii=False))
+            ui.result({"status": "ERROR", "message": f"Artifact not in Cypilot registry: {args.artifact}"})
             return 1
     else:
         # Validate all Cypilot artifacts
@@ -155,16 +156,16 @@ def cmd_validate(argv: List[str]) -> int:
     if not artifacts_to_validate:
         if ctx_errors:
             enrich_issues(ctx_errors, project_root=project_root)
-            print(json.dumps({
+            ui.result({
                 "status": "FAIL",
                 "project_root": project_root.as_posix(),
                 "artifacts_validated": 0,
                 "error_count": len(ctx_errors),
                 "warning_count": 0,
                 "errors": ctx_errors,
-            }, indent=2, ensure_ascii=False))
+            }, human_fn=lambda d: _human_validate(d))
             return 2
-        print(json.dumps({"status": "PASS", "artifacts_validated": 0, "error_count": 0, "warning_count": 0, "message": "No Cypilot artifacts found in registry"}, indent=None, ensure_ascii=False))
+        ui.result({"status": "PASS", "artifacts_validated": 0, "error_count": 0, "warning_count": 0, "message": "No Cypilot artifacts found in registry"})
         return 0
     # @cpt-end:cpt-cypilot-flow-traceability-validation-validate:p1:inst-resolve-artifacts
 
@@ -193,7 +194,7 @@ def cmd_validate(argv: List[str]) -> int:
         if args.output:
             Path(args.output).write_text(json.dumps(out, indent=2, ensure_ascii=False), encoding="utf-8")
         else:
-            print(json.dumps(out, indent=2, ensure_ascii=False))
+            ui.result(out, human_fn=lambda d: _human_validate(d))
         return 2
 
     # @cpt-begin:cpt-cypilot-flow-traceability-validation-validate:p1:inst-foreach-artifact
@@ -291,7 +292,7 @@ def cmd_validate(argv: List[str]) -> int:
         if args.output:
             Path(args.output).write_text(json.dumps(out, indent=2, ensure_ascii=False), encoding="utf-8")
         else:
-            print(json.dumps(out, indent=2, ensure_ascii=False))
+            ui.result(out, human_fn=lambda d: _human_validate(d))
         return 2
     # @cpt-end:cpt-cypilot-flow-traceability-validation-validate:p1:inst-if-structure-fail
 
@@ -626,15 +627,14 @@ def cmd_validate(argv: List[str]) -> int:
                 for r in failed_artifacts
             ]
 
-    pretty = bool(args.verbose) or (overall_status != "PASS")
-    out = json.dumps(report, indent=2 if pretty else None, ensure_ascii=False)
-    if pretty:
-        out += "\n"
-
     if args.output:
-        Path(args.output).write_text(out, encoding="utf-8")
+        pretty = bool(args.verbose) or (overall_status != "PASS")
+        out_text = json.dumps(report, indent=2 if pretty else None, ensure_ascii=False)
+        if pretty:
+            out_text += "\n"
+        Path(args.output).write_text(out_text, encoding="utf-8")
     else:
-        print(out)
+        ui.result(report, human_fn=lambda d: _human_validate(d))
 
     if overall_status == "PASS":
         # @cpt-begin:cpt-cypilot-state-traceability-validation-report:p1:inst-pass
@@ -763,3 +763,60 @@ def _suggest_path_from_autodetect(node: object, target_kind: str) -> Optional[st
         return suggested
 
     return None
+
+
+# ---------------------------------------------------------------------------
+# Human-friendly formatter
+# ---------------------------------------------------------------------------
+
+def _human_validate(data: dict) -> None:
+    status = data.get("status", "")
+    n_art = data.get("artifacts_validated", data.get("artifact_count", 0))
+    n_err = data.get("error_count", 0)
+    n_warn = data.get("warning_count", 0)
+
+    ui.header("Validate")
+    ui.detail("Artifacts", str(n_art))
+    ui.detail("Errors", str(n_err))
+    ui.detail("Warnings", str(n_warn))
+
+    if data.get("code_files_scanned") is not None:
+        ui.detail("Code files", str(data["code_files_scanned"]))
+    if data.get("coverage"):
+        ui.detail("Code coverage", str(data["coverage"]))
+
+    errors = data.get("errors", [])
+    if errors:
+        ui.blank()
+        shown = errors[:20]
+        for e in shown:
+            msg = e.get("message", "") if isinstance(e, dict) else str(e)
+            path = e.get("path", "") if isinstance(e, dict) else ""
+            line = e.get("line", "") if isinstance(e, dict) else ""
+            loc = f"{path}:{line}" if path and line else (path or "")
+            if loc:
+                ui.warn(f"{loc}  {msg}")
+            else:
+                ui.warn(msg)
+        if len(errors) > 20:
+            ui.substep(f"  ... and {len(errors) - 20} more error(s)")
+
+    warnings = data.get("warnings", [])
+    if warnings:
+        shown_w = warnings[:10]
+        for w in shown_w:
+            msg = w.get("message", "") if isinstance(w, dict) else str(w)
+            ui.substep(f"  ⚠ {msg}")
+        if len(warnings) > 10:
+            ui.substep(f"  ... and {len(warnings) - 10} more warning(s)")
+
+    ui.blank()
+    if status == "PASS":
+        ui.success("All checks passed.")
+        if data.get("next_step"):
+            ui.hint(str(data["next_step"]))
+    elif status == "FAIL":
+        ui.error(f"Validation failed — {n_err} error(s).")
+    else:
+        ui.info(f"Status: {status}")
+    ui.blank()

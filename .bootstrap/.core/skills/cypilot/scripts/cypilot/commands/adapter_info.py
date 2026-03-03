@@ -18,6 +18,7 @@ from ..utils.files import (
     find_project_root,
     load_cypilot_config,
 )
+from ..utils.ui import ui
 
 
 def _load_json_file(path: Path) -> Optional[dict]:
@@ -29,6 +30,21 @@ def _load_json_file(path: Path) -> Optional[dict]:
         return data if isinstance(data, dict) else None
     except (json.JSONDecodeError, OSError, IOError):
         return None
+
+
+def _read_kit_conf(conf_path: Path) -> dict:
+    """Read kit conf.toml and return key fields."""
+    try:
+        import tomllib
+        with open(conf_path, "rb") as f:
+            data = tomllib.load(f)
+        out: dict = {}
+        for k in ("version", "slug", "name"):
+            if k in data:
+                out[k] = data[k]
+        return out
+    except Exception:
+        return {}
 
 
 def cmd_adapter_info(argv: list[str]) -> int:
@@ -49,16 +65,12 @@ def cmd_adapter_info(argv: list[str]) -> int:
     # @cpt-begin:cpt-cypilot-algo-core-infra-display-info:p1:inst-info-if-no-root
     if project_root is None:
         # @cpt-begin:cpt-cypilot-algo-core-infra-display-info:p1:inst-info-return-no-root
-        print(json.dumps(
-            {
-                "status": "NOT_FOUND",
-                "message": "No project root found (no AGENTS.md with @cpt:root-agents or .git)",
-                "searched_from": start_path.as_posix(),
-                "hint": "Run 'cypilot init' in your project root",
-            },
-            indent=2,
-            ensure_ascii=False,
-        ))
+        ui.result({
+            "status": "NOT_FOUND",
+            "message": "No project root found (no AGENTS.md with @cpt:root-agents or .git)",
+            "searched_from": start_path.as_posix(),
+            "hint": "Run 'cypilot init' in your project root",
+        })
         return 1
         # @cpt-end:cpt-cypilot-algo-core-infra-display-info:p1:inst-info-return-no-root
     # @cpt-end:cpt-cypilot-algo-core-infra-display-info:p1:inst-info-if-no-root
@@ -69,16 +81,12 @@ def cmd_adapter_info(argv: list[str]) -> int:
     # @cpt-begin:cpt-cypilot-algo-core-infra-display-info:p1:inst-info-if-no-cypilot
     if adapter_dir is None:
         # @cpt-begin:cpt-cypilot-algo-core-infra-display-info:p1:inst-info-return-no-cypilot
-        print(json.dumps(
-            {
-                "status": "NOT_FOUND",
-                "message": "Cypilot not initialized in project",
-                "project_root": project_root.as_posix(),
-                "hint": "Run 'cypilot init' to initialize Cypilot for this project",
-            },
-            indent=2,
-            ensure_ascii=False,
-        ))
+        ui.result({
+            "status": "NOT_FOUND",
+            "message": "Cypilot not initialized in project",
+            "project_root": project_root.as_posix(),
+            "hint": "Run 'cypilot init' to initialize Cypilot for this project",
+        })
         return 1
         # @cpt-end:cpt-cypilot-algo-core-infra-display-info:p1:inst-info-return-no-cypilot
     # @cpt-end:cpt-cypilot-algo-core-infra-display-info:p1:inst-info-if-no-cypilot
@@ -255,9 +263,208 @@ def cmd_adapter_info(argv: list[str]) -> int:
     if not core_toml.is_file():
         core_toml = adapter_dir / "core.toml"
     config["has_config"] = core_toml.exists()
+
+    # Core config version
+    if core_data and isinstance(core_data.get("version"), str):
+        config["config_version"] = core_data["version"]
+
+    # Kit details: versions, blueprints, drift
+    kit_details = {}
+    kits_ref_dir = adapter_dir / "kits"
+    config_kits_dir = adapter_dir / "config" / "kits"
+    gen_kits_dir = adapter_dir / ".gen" / "kits"
+    if kits_ref_dir.is_dir():
+        for kit_dir in sorted(kits_ref_dir.iterdir()):
+            if not kit_dir.is_dir():
+                continue
+            slug = kit_dir.name
+            kd: dict = {"slug": slug}
+            # Reference version
+            ref_conf = kit_dir / "conf.toml"
+            if ref_conf.is_file():
+                kd.update(_read_kit_conf(ref_conf))
+                kd["ref_version"] = kd.get("version")
+            # Config (user) version
+            cfg_conf = config_kits_dir / slug / "conf.toml"
+            if cfg_conf.is_file():
+                cfg_data = _read_kit_conf(cfg_conf)
+                kd["config_version"] = cfg_data.get("version")
+                if kd.get("ref_version") and kd["config_version"]:
+                    try:
+                        kd["drift"] = int(kd["ref_version"]) != int(kd["config_version"])
+                    except (ValueError, TypeError):
+                        kd["drift"] = str(kd["ref_version"]) != str(kd["config_version"])
+            # Blueprints
+            bp_dir = config_kits_dir / slug / "blueprints"
+            if bp_dir.is_dir():
+                bps = sorted(f.stem for f in bp_dir.glob("*.md"))
+                kd["blueprints"] = bps
+            # Generated artifact kinds
+            gen_art_dir = gen_kits_dir / slug / "artifacts"
+            if gen_art_dir.is_dir():
+                kd["artifact_kinds"] = sorted(d.name for d in gen_art_dir.iterdir() if d.is_dir())
+            # Generated workflows
+            gen_wf_dir = gen_kits_dir / slug / "workflows"
+            if gen_wf_dir.is_dir():
+                kd["workflows"] = sorted(f.stem for f in gen_wf_dir.glob("*.md"))
+            kit_details[slug] = kd
+    config["kit_details"] = kit_details
+
+    # Agent integrations
+    agents_found = []
+    agent_dirs = {
+        "windsurf": project_root / ".windsurf",
+        "cursor": project_root / ".cursor",
+        "claude": project_root / ".claude",
+        "copilot": project_root / ".github" / "copilot-instructions.md",
+        "openai": project_root / ".agents",
+    }
+    for agent_name, agent_path in agent_dirs.items():
+        if agent_path.exists():
+            agents_found.append(agent_name)
+    config["agent_integrations"] = agents_found
+
+    # Directory structure health
+    dirs_status = {}
+    for subdir in [".core", ".gen", "config", "kits"]:
+        d = adapter_dir / subdir
+        dirs_status[subdir] = d.is_dir()
+    config["directories"] = dirs_status
     # @cpt-end:cpt-cypilot-algo-core-infra-display-info:p1:inst-info-compute-metadata
 
     # @cpt-begin:cpt-cypilot-algo-core-infra-display-info:p1:inst-info-return-ok
-    print(json.dumps(config, indent=2, ensure_ascii=False))
+    ui.result(config, human_fn=_human_info)
     return 0
     # @cpt-end:cpt-cypilot-algo-core-infra-display-info:p1:inst-info-return-ok
+
+
+def _human_info(data: dict) -> None:
+    """Human-friendly formatter for the info command."""
+    ui.header("Cypilot Project Info")
+
+    # Basic info
+    if data.get("project_name"):
+        ui.detail("Project", str(data["project_name"]))
+    ui.detail("Project root", str(data.get("project_root", "?")))
+    ui.detail("Cypilot dir", str(data.get("relative_path", data.get("cypilot_dir", "?"))))
+    if data.get("config_version"):
+        ui.detail("Config version", str(data["config_version"]))
+
+    # Directory structure health
+    dirs = data.get("directories", {})
+    if dirs:
+        missing = [d for d, ok in dirs.items() if not ok]
+        if missing:
+            ui.warn(f"Missing directories: {', '.join(missing)}")
+
+    # Kit details
+    kit_details = data.get("kit_details", {})
+    if kit_details:
+        ui.blank()
+        ui.step(f"Kits ({len(kit_details)})")
+        for slug, kd in kit_details.items():
+            name = kd.get("name", slug)
+            ref_v = kd.get("ref_version", "?")
+            cfg_v = kd.get("config_version")
+            drift = kd.get("drift", False)
+            ver_str = f"v{ref_v}"
+            if cfg_v is not None and drift:
+                ver_str = f"v{cfg_v} → v{ref_v} (migration needed)"
+            ui.substep(f"  {name}  {ver_str}")
+
+            bps = kd.get("blueprints", [])
+            if bps:
+                ui.substep(f"    Blueprints ({len(bps)}): {', '.join(bps)}")
+
+            kinds = kd.get("artifact_kinds", [])
+            if kinds:
+                ui.substep(f"    Artifact kinds ({len(kinds)}): {', '.join(kinds)}")
+
+            wfs = kd.get("workflows", [])
+            if wfs:
+                ui.substep(f"    Workflows: {', '.join(wfs)}")
+
+    # Systems with artifacts
+    auto_reg = data.get("autodetect_registry") or {}
+    systems = auto_reg.get("systems") or []
+    reg = data.get("artifacts_registry")
+    reg_systems = (reg.get("systems") or []) if isinstance(reg, dict) else []
+
+    if systems or reg_systems:
+        ui.blank()
+        display_systems = reg_systems if reg_systems else systems
+        ui.step(f"Systems ({len(display_systems)})")
+        for sys_info in display_systems:
+            if not isinstance(sys_info, dict):
+                continue
+            name = sys_info.get("name", "?")
+            slug = sys_info.get("slug", "")
+            kit = sys_info.get("kit", "")
+            label = f"{name} ({slug})" if slug else name
+            if kit:
+                label += f"  kit={kit}"
+            ui.substep(f"  {label}")
+
+            # Artifacts
+            arts = sys_info.get("artifacts") or []
+            if arts:
+                for a in arts:
+                    if isinstance(a, dict):
+                        path = a.get("path", "?")
+                        kind = a.get("kind", "")
+                        trace = a.get("traceability", "")
+                        parts = [path]
+                        if kind:
+                            parts.append(kind)
+                        if trace and trace != "DOCS-ONLY":
+                            parts.append(trace)
+                        ui.substep(f"      {parts[0]}  ({', '.join(parts[1:])})" if len(parts) > 1 else f"      {parts[0]}")
+
+            # Codebase
+            codes = sys_info.get("codebase") or []
+            if codes:
+                for c in codes:
+                    if isinstance(c, dict):
+                        cpath = c.get("path", "?")
+                        exts = c.get("extensions") or []
+                        ext_str = f"  [{', '.join(exts)}]" if exts else ""
+                        ui.substep(f"      {cpath}{ext_str}")
+
+            # Children
+            for ch in (sys_info.get("children") or []):
+                if isinstance(ch, dict):
+                    ch_name = ch.get("name", "?")
+                    ch_slug = ch.get("slug", "")
+                    ui.substep(f"    └ {ch_name} ({ch_slug})")
+                    for a in (ch.get("artifacts") or []):
+                        if isinstance(a, dict):
+                            ui.substep(f"        {a.get('path', '?')}  ({a.get('kind', '')})")
+                    for c in (ch.get("codebase") or []):
+                        if isinstance(c, dict):
+                            cpath = c.get("path", "?")
+                            exts = c.get("extensions") or []
+                            ext_str = f"  [{', '.join(exts)}]" if exts else ""
+                            ui.substep(f"        {cpath}{ext_str}")
+
+    # Rules
+    rules = data.get("rules", [])
+    if rules:
+        ui.blank()
+        ui.step(f"Rules ({len(rules)})")
+        for r in rules:
+            ui.substep(f"  {r}")
+
+    # Agent integrations
+    agents = data.get("agent_integrations", [])
+    if agents:
+        ui.blank()
+        ui.step(f"Agent integrations ({len(agents)})")
+        ui.substep(f"  {', '.join(agents)}")
+
+    # Registry errors
+    reg_err = data.get("artifacts_registry_error")
+    if reg_err:
+        ui.blank()
+        ui.warn(f"Registry: {reg_err}")
+
+    ui.blank()

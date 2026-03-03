@@ -3,7 +3,7 @@ cypilot: true
 type: spec
 name: Project Extension Specification
 version: 1.0
-purpose: Define how projects extend Cypilot behavior through .cypilot/config/sysprompts and config/AGENTS.md with operation-scoped system prompts
+purpose: Define how projects extend Cypilot behavior through {cypilot_path}/config/sysprompts and config/AGENTS.md with operation-scoped system prompts
 drivers:
   - cpt-cypilot-fr-core-config
   - cpt-cypilot-fr-core-workflows
@@ -69,7 +69,7 @@ Projects extend Cypilot behavior by placing **system prompts** in `{cypilot_path
 ## Extension Directory
 
 ```
-.cypilot/
+{cypilot_path}/             # Install directory (default: cypilot/)
 └── config/
     ├── AGENTS.md              # Navigation rules (WHEN → spec file)
     ├── core.toml              # Core config
@@ -93,7 +93,8 @@ Cypilot injects a managed block into the **project root** `AGENTS.md` that route
 
 ```markdown
 <!-- @cpt:root-agents -->
-ALWAYS open @/.cypilot/config/AGENTS.md FIRST
+ALWAYS open and follow `{cypilot_path}/.gen/AGENTS.md` FIRST
+ALWAYS open and follow `{cypilot_path}/config/AGENTS.md` WHEN it exists
 <!-- @/cpt:root-agents -->
 ```
 

@@ -16,12 +16,17 @@ Provides CLI handlers for kit install, kit update, and generate-resources.
 
 import argparse
 import json
+import os
 import re
 import shutil
+import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+from ..utils.ui import ui
 
 
 # Subdirectories to copy from kit source (reference + install)
@@ -75,14 +80,14 @@ def _resolve_cypilot_dir() -> Optional[tuple]:
     # @cpt-begin:cpt-cypilot-algo-blueprint-system-resolve-dir:p1:inst-find-root
     project_root = find_project_root(Path.cwd())
     if project_root is None:
-        print(json.dumps({"status": "ERROR", "message": "No project root found"}, ensure_ascii=False))
+        ui.result({"status": "ERROR", "message": "No project root found"})
         return None
     # @cpt-end:cpt-cypilot-algo-blueprint-system-resolve-dir:p1:inst-find-root
 
     # @cpt-begin:cpt-cypilot-algo-blueprint-system-resolve-dir:p1:inst-read-cypilot-var
     cypilot_rel = _read_cypilot_var(project_root)
     if not cypilot_rel:
-        print(json.dumps({"status": "ERROR", "message": "No cypilot directory"}, ensure_ascii=False))
+        ui.result({"status": "ERROR", "message": "No cypilot directory"})
         return None
     # @cpt-end:cpt-cypilot-algo-blueprint-system-resolve-dir:p1:inst-read-cypilot-var
 
@@ -318,20 +323,20 @@ def cmd_kit_install(argv: List[str]) -> int:
     # @cpt-begin:cpt-cypilot-flow-blueprint-system-kit-install:p1:inst-validate-source
     # @cpt-begin:cpt-cypilot-flow-blueprint-system-kit-install:p1:inst-if-invalid-source
     if not blueprints_dir.is_dir():
-        print(json.dumps({
+        ui.result({
             "status": "FAIL",
             "message": f"Kit source missing blueprints/ directory: {kit_source}",
             "hint": "Kit must contain a blueprints/ directory with at least one .md file",
-        }, indent=2, ensure_ascii=False))
+        })
         return 2
 
     bp_files = list(blueprints_dir.glob("*.md"))
     if not bp_files:
-        print(json.dumps({
+        ui.result({
             "status": "FAIL",
             "message": f"No .md files in {blueprints_dir}",
             "hint": "blueprints/ must contain at least one blueprint .md file",
-        }, indent=2, ensure_ascii=False))
+        })
         return 2
     # @cpt-end:cpt-cypilot-flow-blueprint-system-kit-install:p1:inst-if-invalid-source
     # @cpt-end:cpt-cypilot-flow-blueprint-system-kit-install:p1:inst-validate-source
@@ -362,20 +367,20 @@ def cmd_kit_install(argv: List[str]) -> int:
 
     project_root = find_project_root(Path.cwd())
     if project_root is None:
-        print(json.dumps({
+        ui.result({
             "status": "ERROR",
             "message": "No project root found",
             "hint": "Run 'cypilot init' first",
-        }, indent=2, ensure_ascii=False))
+        })
         return 1
 
     cypilot_rel = _read_cypilot_var(project_root)
     if not cypilot_rel:
-        print(json.dumps({
+        ui.result({
             "status": "ERROR",
             "message": "No cypilot directory configured",
             "hint": "Run 'cypilot init' first",
-        }, indent=2, ensure_ascii=False))
+        })
         return 1
 
     cypilot_dir = (project_root / cypilot_rel).resolve()
@@ -383,24 +388,24 @@ def cmd_kit_install(argv: List[str]) -> int:
 
     # @cpt-begin:cpt-cypilot-flow-blueprint-system-kit-install:p1:inst-if-already-registered
     if ref_dir.exists() and not args.force:
-        print(json.dumps({
+        ui.result({
             "status": "FAIL",
             "message": f"Kit '{kit_slug}' already installed",
             "hint": "Use --force to overwrite",
-        }, indent=2, ensure_ascii=False))
+        })
         return 2
     # @cpt-end:cpt-cypilot-flow-blueprint-system-kit-install:p1:inst-if-already-registered
 
     if args.dry_run:
         user_bp_dir = cypilot_dir / "config" / "kits" / kit_slug / "blueprints"
-        print(json.dumps({
+        ui.result({
             "status": "DRY_RUN",
             "kit": kit_slug,
             "version": kit_version,
             "source": kit_source.as_posix(),
             "reference": ref_dir.as_posix(),
             "blueprints": user_bp_dir.as_posix(),
-        }, indent=2, ensure_ascii=False))
+        })
         return 0
 
     result = install_kit(kit_source, cypilot_dir, kit_slug, kit_version)
@@ -418,7 +423,7 @@ def cmd_kit_install(argv: List[str]) -> int:
     if result.get("errors"):
         output["errors"] = result["errors"]
 
-    print(json.dumps(output, indent=2, ensure_ascii=False))
+    ui.result(output)
     return 0
     # @cpt-end:cpt-cypilot-state-blueprint-system-kit-install:p1:inst-install-complete
     # @cpt-end:cpt-cypilot-flow-blueprint-system-kit-install:p1:inst-return-install-ok
@@ -450,27 +455,20 @@ def cmd_kit_update(argv: List[str]) -> int:
     kits_ref_dir = cypilot_dir / "kits"
 
     if not kits_ref_dir.is_dir():
-        print(json.dumps({
-            "status": "FAIL",
-            "message": "No kits installed",
-            "hint": "Run 'cypilot kit install <path>' first",
-        }, indent=2, ensure_ascii=False))
+        ui.result({"status": "FAIL", "message": "No kits installed", "hint": "Run 'cypilot kit install <path>' first"})
         return 2
 
     # @cpt-begin:cpt-cypilot-flow-blueprint-system-kit-update:p1:inst-resolve-kits
     if args.kit:
         kit_dirs = [kits_ref_dir / args.kit]
         if not kit_dirs[0].is_dir():
-            print(json.dumps({
-                "status": "FAIL",
-                "message": f"Kit '{args.kit}' not found in {kits_ref_dir}",
-            }, indent=2, ensure_ascii=False))
+            ui.result({"status": "FAIL", "message": f"Kit '{args.kit}' not found in {kits_ref_dir}"})
             return 2
     else:
         kit_dirs = [d for d in sorted(kits_ref_dir.iterdir()) if d.is_dir()]
 
     if not kit_dirs:
-        print(json.dumps({"status": "FAIL", "message": "No kits found"}, ensure_ascii=False))
+        ui.result({"status": "FAIL", "message": "No kits found"})
         return 2
     # @cpt-end:cpt-cypilot-flow-blueprint-system-kit-update:p1:inst-resolve-kits
 
@@ -540,7 +538,7 @@ def cmd_kit_update(argv: List[str]) -> int:
     if all_errors:
         output["errors"] = all_errors
 
-    print(json.dumps(output, indent=2, ensure_ascii=False))
+    ui.result(output)
     return 0
     # @cpt-end:cpt-cypilot-state-blueprint-system-kit-install:p1:inst-update-complete
     # @cpt-end:cpt-cypilot-flow-blueprint-system-kit-update:p1:inst-return-update-ok
@@ -583,11 +581,7 @@ def cmd_generate_resources(argv: List[str]) -> int:
                     bp_dirs.append((kit_dir.name, bp_dir))
 
     if not bp_dirs:
-        print(json.dumps({
-            "status": "FAIL",
-            "message": "No kits with blueprints found",
-            "hint": "Run 'cypilot kit install <path>' first",
-        }, indent=2, ensure_ascii=False))
+        ui.result({"status": "FAIL", "message": "No kits with blueprints found", "hint": "Run 'cypilot kit install <path>' first"})
         return 2
     # @cpt-end:cpt-cypilot-flow-blueprint-system-generate-resources:p1:inst-resolve-gen-kits
 
@@ -625,7 +619,7 @@ def cmd_generate_resources(argv: List[str]) -> int:
     if all_errors:
         output["errors"] = all_errors
 
-    print(json.dumps(output, indent=2, ensure_ascii=False))
+    ui.result(output)
     return 0
     # @cpt-end:cpt-cypilot-flow-blueprint-system-generate-resources:p1:inst-return-gen-ok
 
@@ -986,15 +980,18 @@ def _normalize_legacy_to_named(text: str, reference_text: str = "") -> tuple:
     return "".join(result_parts), norm_details
 
 
-def _prompt_confirm(message: str, state: Dict[str, bool]) -> str:
-    """Interactive prompt returning 'y' or 'n'.
+def _prompt_confirm(message: str, state: Dict[str, bool], *, allow_modify: bool = False) -> str:
+    """Interactive prompt returning 'y', 'n', or 'm' (when allow_modify=True).
 
     state['all'] tracks whether user already chose 'all' (auto-approve).
     Prompts go to stderr, input from stdin.
     """
     if state.get("all"):
         return "y"
-    sys.stderr.write(f"{message} [y/N/all (approve remaining files)] ")
+    if allow_modify:
+        sys.stderr.write(f"{message} [y/N/m(odify)/all] ")
+    else:
+        sys.stderr.write(f"{message} [y/N/all (approve remaining files)] ")
     sys.stderr.flush()
     try:
         response = input().strip().lower()
@@ -1003,6 +1000,8 @@ def _prompt_confirm(message: str, state: Dict[str, bool]) -> str:
     if response == "all":
         state["all"] = True
         return "y"
+    if allow_modify and response in ("m", "modify"):
+        return "m"
     return "y" if response == "y" else "n"
 
 
@@ -1038,6 +1037,110 @@ def _show_marker_diff(key: str, user_raw: str, new_raw: str) -> None:
             sys.stderr.write(f"        \033[36m{line_s}\033[0m\n")
 
 
+_EDITOR_SEPARATOR = "# ── edit below this line ──────────────────────────────────────"
+
+
+def _get_editor() -> str:
+    """Return the user's preferred editor, git-style: $VISUAL → $EDITOR → vi."""
+    return os.environ.get("VISUAL") or os.environ.get("EDITOR") or "vi"
+
+
+def _open_editor_for_marker(
+    key: str,
+    user_raw: str,
+    new_raw: str,
+) -> Optional[str]:
+    """Open user's default editor for manual marker merge, git-style.
+
+    Creates a temp file with the diff as comments and the user's current
+    content as default. Returns edited content, or None if aborted
+    (empty file saved or editor failed).
+    """
+    import difflib
+
+    # Build diff for reference
+    user_lines = user_raw.splitlines(keepends=True)
+    new_lines = new_raw.splitlines(keepends=True)
+    diff = list(difflib.unified_diff(
+        user_lines, new_lines,
+        fromfile=f"yours ({key})",
+        tofile=f"reference ({key})",
+        lineterm="",
+    ))
+
+    # Compose temp file content
+    header_lines = [
+        f"# cypilot migrate: edit marker [{key}]",
+        "#",
+        "# Diff between your version (−) and the new reference (+):",
+    ]
+    if diff:
+        header_lines.append("#")
+        for d in diff:
+            header_lines.append(f"#   {d.rstrip()}")
+    else:
+        header_lines.append("#   (no diff — versions are identical)")
+    header_lines.extend([
+        "#",
+        "# Edit the content below the separator line.",
+        "# To abort, delete all content below the separator and save.",
+        _EDITOR_SEPARATOR,
+    ])
+
+    content = "\n".join(header_lines) + "\n" + user_raw
+
+    editor = _get_editor()
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            suffix=".md",
+            prefix=f"cypilot-migrate-{key.replace(':', '-').replace('#', '-')}-",
+            delete=False,
+            encoding="utf-8",
+        ) as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
+
+        subprocess.check_call([editor, tmp_path])
+
+        with open(tmp_path, encoding="utf-8") as f:
+            edited = f.read()
+    except Exception as exc:
+        sys.stderr.write(f"        editor failed: {exc}\n")
+        return None
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+
+    # Extract content after separator
+    sep_idx = edited.find(_EDITOR_SEPARATOR)
+    if sep_idx != -1:
+        after_sep = edited[sep_idx + len(_EDITOR_SEPARATOR):]
+        # Strip exactly one leading newline after separator
+        if after_sep.startswith("\n"):
+            after_sep = after_sep[1:]
+        result = after_sep
+    else:
+        # No separator found — use entire content, strip header comments
+        lines = edited.splitlines(keepends=True)
+        first_non_comment = 0
+        for i, line in enumerate(lines):
+            if not line.startswith("#"):
+                first_non_comment = i
+                break
+        else:
+            first_non_comment = len(lines)
+        result = "".join(lines[first_non_comment:])
+
+    # Empty result = abort
+    if not result.strip():
+        return None
+
+    return result
+
+
 def _three_way_merge_blueprint(
     old_ref_text: str,
     new_ref_text: str,
@@ -1048,6 +1151,7 @@ def _three_way_merge_blueprint(
     remove_keys: frozenset = frozenset(),
     skip_keys: frozenset = frozenset(),
     skip_insert_keys: frozenset = frozenset(),
+    modify_overrides: Optional[Dict[str, str]] = None,
 ) -> tuple:
     """Three-way merge of a blueprint at the @cpt: marker level.
 
@@ -1060,6 +1164,7 @@ def _three_way_merge_blueprint(
         remove_keys: Set of marker keys to remove (reference deleted, user still has).
         skip_keys: Set of marker keys to NOT update (keep user version even though ref changed).
         skip_insert_keys: Set of marker keys to NOT insert (even though new in ref).
+        modify_overrides: Dict of marker key → custom content from manual editor merge.
 
     Returns:
         (merged_text, report) where report is a dict with:
@@ -1069,7 +1174,10 @@ def _three_way_merge_blueprint(
         - inserted: list of marker keys inserted (new in reference)
         - deleted: list of marker keys user removed (still in reference)
         - upgraded: list of marker keys upgraded from legacy to named syntax
+        - modified: list of marker keys manually edited by user
     """
+    if modify_overrides is None:
+        modify_overrides = {}
     # Normalize legacy markers to named syntax before comparison.
     # Uses new_ref as positional guide so ALL marker types get correct IDs.
     old_ref_text, _ = _normalize_legacy_to_named(old_ref_text, new_ref_text)
@@ -1102,6 +1210,7 @@ def _three_way_merge_blueprint(
     ref_removed: List[str] = []
     ref_removed_details: Dict[str, str] = {}  # key → user_raw
     kept: List[str] = []
+    modified: List[str] = []  # keys manually edited via editor
     # Each element: (raw_text, marker_key or None)
     merged_parts: List[tuple] = []
 
@@ -1113,6 +1222,12 @@ def _three_way_merge_blueprint(
         key = seg.marker_key
         old_raw = old_map.get(key)
         new_raw = new_map.get(key)
+
+        # Manual editor override takes precedence over all other logic
+        if key in modify_overrides:
+            merged_parts.append((modify_overrides[key], key))
+            modified.append(key)
+            continue
 
         # @cpt-begin:cpt-cypilot-algo-blueprint-system-three-way-merge:p1:inst-keep-user-added
         if old_raw is None:
@@ -1223,7 +1338,11 @@ def _three_way_merge_blueprint(
             # If still no match, insert_idx stays at len(merged_parts) — append
         # @cpt-end:cpt-cypilot-algo-blueprint-system-three-way-merge:p1:inst-insert-fallback
 
-        merged_parts.insert(insert_idx, (seg.raw, seg.marker_key))
+        if seg.marker_key in modify_overrides:
+            merged_parts.insert(insert_idx, (modify_overrides[seg.marker_key], seg.marker_key))
+            modified.append(seg.marker_key)
+        else:
+            merged_parts.insert(insert_idx, (seg.raw, seg.marker_key))
         if is_restore:
             restored.append(seg.marker_key)
         else:
@@ -1249,6 +1368,7 @@ def _three_way_merge_blueprint(
         "ref_removed_details": ref_removed_details,
         "removed": [k for k in ref_removed if k in remove_keys],
         "kept": kept, "inserted": inserted,
+        "modified": modified,
         "upgraded": list(dict.fromkeys(list(norm_upgraded_details) + upgraded)),
         "upgraded_details": {**norm_upgraded_details, **upgraded_details},
     }
@@ -1656,27 +1776,56 @@ def migrate_kit(
                 accepted_force: List[str] = []
                 accepted_restore: List[str] = []
                 accepted_remove: List[str] = []
+                modify_overrides: Dict[str, str] = {}
 
                 for k in report["updated"]:
                     sys.stderr.write(f"    ✎ {k} — updated from reference\n")
                     if k in upd_details:
                         _show_marker_diff(k, *upd_details[k])
-                    if _prompt_confirm("    apply?", apply_state) == "n":
+                    ans = _prompt_confirm("    apply?", apply_state, allow_modify=True)
+                    if ans == "n":
                         declined_update.append(k)
+                    elif ans == "m" and k in upd_details:
+                        old_raw, new_raw = upd_details[k]
+                        edited = _open_editor_for_marker(k, old_raw, new_raw)
+                        if edited is not None:
+                            modify_overrides[k] = edited
+                            sys.stderr.write(f"        ✓ manually edited\n")
+                        else:
+                            sys.stderr.write(f"        ✗ aborted — keeping yours\n")
+                            declined_update.append(k)
 
                 for k in report.get("inserted", []):
                     sys.stderr.write(f"    + {k} — new marker\n")
                     if k in ins_map:
                         _show_marker_content(ins_map[k], color="green")
-                    if _prompt_confirm("    insert?", apply_state) == "n":
+                    ans = _prompt_confirm("    insert?", apply_state, allow_modify=True)
+                    if ans == "n":
                         declined_insert.append(k)
+                    elif ans == "m" and k in ins_map:
+                        edited = _open_editor_for_marker(k, ins_map[k], ins_map[k])
+                        if edited is not None:
+                            modify_overrides[k] = edited
+                            sys.stderr.write(f"        ✓ manually edited\n")
+                        else:
+                            sys.stderr.write(f"        ✗ aborted — skipping insert\n")
+                            declined_insert.append(k)
 
                 for k in report["skipped"]:
                     sys.stderr.write(f"    ≡ {k} — customized by you\n")
                     if k in skip_details:
                         _show_marker_diff(k, *skip_details[k])
-                    if _prompt_confirm("    overwrite?", apply_state) == "y":
+                    ans = _prompt_confirm("    overwrite?", apply_state, allow_modify=True)
+                    if ans == "y":
                         accepted_force.append(k)
+                    elif ans == "m" and k in skip_details:
+                        user_raw, new_raw = skip_details[k]
+                        edited = _open_editor_for_marker(k, user_raw, new_raw)
+                        if edited is not None:
+                            modify_overrides[k] = edited
+                            sys.stderr.write(f"        ✓ manually edited\n")
+                        else:
+                            sys.stderr.write(f"        ✗ aborted — keeping yours\n")
 
                 del_details = report.get("deleted_details", {})
                 for k in report.get("deleted", []):
@@ -1702,6 +1851,7 @@ def migrate_kit(
                     remove_keys=frozenset(accepted_remove),
                     skip_keys=frozenset(declined_update),
                     skip_insert_keys=frozenset(declined_insert),
+                    modify_overrides=modify_overrides,
                 )
 
                 if merged_text == user_text:
@@ -1719,6 +1869,8 @@ def migrate_kit(
                     bp_report["markers_inserted"] = report["inserted"]
                 if report.get("restored"):
                     bp_report["markers_restored"] = report["restored"]
+                if report.get("modified"):
+                    bp_report["markers_modified"] = report["modified"]
                 if accepted_force:
                     bp_report["markers_forced"] = accepted_force
                 if declined_update:
@@ -1727,7 +1879,8 @@ def migrate_kit(
                     bp_report["markers_insert_declined"] = declined_insert
 
                 bp_report["action"] = "merged"
-                if not report["updated"] and not report.get("inserted"):
+                if (not report["updated"] and not report.get("inserted")
+                        and not report.get("modified")):
                     bp_report["markers_upgraded"] = True
                 user_bp_dir.mkdir(parents=True, exist_ok=True)
                 user_file.write_text(merged_text, encoding="utf-8")
@@ -1821,21 +1974,14 @@ def cmd_kit_migrate(argv: List[str]) -> int:
     kits_ref_dir = cypilot_dir / "kits"
 
     if not kits_ref_dir.is_dir():
-        print(json.dumps({
-            "status": "FAIL",
-            "message": "No kits installed",
-            "hint": "Run 'cypilot kit install <path>' first",
-        }, indent=2, ensure_ascii=False))
+        ui.result({"status": "FAIL", "message": "No kits installed", "hint": "Run 'cypilot kit install <path>' first"})
         return 2
 
     # Resolve kit dirs
     if args.kit:
         kit_dirs = [kits_ref_dir / args.kit]
         if not kit_dirs[0].is_dir():
-            print(json.dumps({
-                "status": "FAIL",
-                "message": f"Kit '{args.kit}' not found in {kits_ref_dir}",
-            }, indent=2, ensure_ascii=False))
+            ui.result({"status": "FAIL", "message": f"Kit '{args.kit}' not found in {kits_ref_dir}"})
             return 2
     else:
         kit_dirs = [d for d in sorted(kits_ref_dir.iterdir()) if d.is_dir()]
@@ -1894,7 +2040,7 @@ def cmd_kit_migrate(argv: List[str]) -> int:
     if args.dry_run:
         output["dry_run"] = True
 
-    print(json.dumps(output, indent=2, ensure_ascii=False))
+    ui.result(output)
     return 0
     # @cpt-end:cpt-cypilot-flow-blueprint-system-kit-migrate:p1:inst-return-migrate-ok
 
@@ -1909,11 +2055,7 @@ def cmd_kit(argv: List[str]) -> int:
     Usage: cypilot kit <install|update|migrate> [options]
     """
     if not argv:
-        print(json.dumps({
-            "status": "ERROR",
-            "message": "Missing kit subcommand",
-            "subcommands": ["install", "update", "migrate"],
-        }, indent=None, ensure_ascii=False))
+        ui.result({"status": "ERROR", "message": "Missing kit subcommand", "subcommands": ["install", "update", "migrate"]})
         return 1
 
     subcmd = argv[0]
@@ -1926,11 +2068,7 @@ def cmd_kit(argv: List[str]) -> int:
     elif subcmd == "migrate":
         return cmd_kit_migrate(rest)
     else:
-        print(json.dumps({
-            "status": "ERROR",
-            "message": f"Unknown kit subcommand: {subcmd}",
-            "subcommands": ["install", "update", "migrate"],
-        }, indent=None, ensure_ascii=False))
+        ui.result({"status": "ERROR", "message": f"Unknown kit subcommand: {subcmd}", "subcommands": ["install", "update", "migrate"]})
         return 1
 
 
