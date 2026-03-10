@@ -280,6 +280,24 @@ The system MUST provide CLI commands to: install kits from GitHub, update kits, 
 **Actors**:
 `cpt-cypilot-actor-user`, `cpt-cypilot-actor-cypilot-cli`
 
+#### Declarative Kit Installation Manifest
+
+- [ ] `p1` - **ID**: `cpt-cypilot-fr-core-kit-manifest`
+
+A kit MAY include a declarative installation manifest at its root. When present, the manifest governs the entire installation and update process. The system MUST:
+
+1. **Declare kit resources** — the manifest MUST enumerate all resources the kit provides, each with a unique identifier, a default destination path, and a flag indicating whether the user can override the path.
+2. **Prompt for modifiable paths** — for user-modifiable resources, the system MUST prompt the user for the destination path during installation, offering a default. Non-modifiable resources MUST be placed at the default path silently.
+3. **Support kit root override** — the user MUST be able to override the entire kit root directory during installation when the manifest permits it.
+4. **Persist resolved paths** — all resolved resource paths MUST be stored in project configuration and retrievable via CLI.
+5. **Template variable resolution** — resource identifiers MUST be usable as template variables in kit files and resolvable by workflows during execution.
+6. **Handle updates** — on kit update, the system MUST apply changes to registered resource paths, prompt the user for new unregistered resources, and warn about removed resources without auto-deleting user files.
+7. **Backward compatibility** — when updating a kit that was installed without a manifest (legacy install), and the new version introduces a manifest, the system MUST auto-register all resource paths from existing files without requiring re-installation.
+8. **Graceful fallback** — when no manifest is present, the system MUST fall back to the current installation behavior.
+
+**Actors**:
+`cpt-cypilot-actor-user`, `cpt-cypilot-actor-cypilot-cli`
+
 #### Generated Resource Editing & Interactive Diff
 
 - [x] `p1` - **ID**: `cpt-cypilot-fr-core-resource-diff`

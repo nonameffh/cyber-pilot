@@ -59,7 +59,6 @@ def _bootstrap_project(root: Path, adapter_rel: str = "cypilot") -> Path:
     toml_utils.dump({
         "version": "1.0",
         "project_root": "..",
-        "system": {"name": "Test", "slug": "test", "kit": "cypilot-sdlc"},
         "kits": {},
     }, config / "core.toml")
     return adapter
@@ -1117,27 +1116,37 @@ class TestCollectKitMetadataOsError(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# _read_project_name_from_core
+# _read_project_name_from_registry
 # ---------------------------------------------------------------------------
 
-class TestReadProjectNameFromCore(unittest.TestCase):
+class TestReadProjectNameFromRegistry(unittest.TestCase):
     def test_missing_file(self):
-        from cypilot.commands.kit import _read_project_name_from_core
-        self.assertIsNone(_read_project_name_from_core(Path("/nonexistent")))
+        from cypilot.commands.kit import _read_project_name_from_registry
+        self.assertIsNone(_read_project_name_from_registry(Path("/nonexistent")))
 
     def test_corrupt_toml(self):
-        from cypilot.commands.kit import _read_project_name_from_core
+        from cypilot.commands.kit import _read_project_name_from_registry
         with TemporaryDirectory() as td:
-            p = Path(td) / "core.toml"
+            p = Path(td) / "artifacts.toml"
             p.write_text("{{bad", encoding="utf-8")
-            self.assertIsNone(_read_project_name_from_core(Path(td)))
+            self.assertIsNone(_read_project_name_from_registry(Path(td)))
 
     def test_empty_name(self):
-        from cypilot.commands.kit import _read_project_name_from_core
+        from cypilot.commands.kit import _read_project_name_from_registry
         from cypilot.utils import toml_utils
         with TemporaryDirectory() as td:
-            toml_utils.dump({"system": {"name": "  "}}, Path(td) / "core.toml")
-            self.assertIsNone(_read_project_name_from_core(Path(td)))
+            toml_utils.dump({"systems": [{"name": "  "}]}, Path(td) / "artifacts.toml")
+            self.assertIsNone(_read_project_name_from_registry(Path(td)))
+
+    def test_reads_first_system_name(self):
+        from cypilot.commands.kit import _read_project_name_from_registry
+        from cypilot.utils import toml_utils
+        with TemporaryDirectory() as td:
+            toml_utils.dump(
+                {"systems": [{"name": "MyProject", "slug": "myproject", "kit": "sdlc"}]},
+                Path(td) / "artifacts.toml",
+            )
+            self.assertEqual(_read_project_name_from_registry(Path(td)), "MyProject")
 
 
 # ---------------------------------------------------------------------------
@@ -1315,7 +1324,6 @@ class TestCmdKitUpdateCli(unittest.TestCase):
             toml_utils.dump({
                 "version": "1.0",
                 "project_root": "..",
-                "system": {"name": "Test", "slug": "test", "kit": "testkit"},
                 "kits": {"testkit": {"format": "Cypilot", "path": "config/kits/testkit"}},
             }, adapter / "config" / "core.toml")
             # Create installed kit dir
@@ -1358,7 +1366,6 @@ class TestCmdKitUpdateCli(unittest.TestCase):
             toml_utils.dump({
                 "version": "1.0",
                 "project_root": "..",
-                "system": {"name": "Test"},
                 "kits": {},
             }, adapter / "config" / "core.toml")
             cwd = os.getcwd()
@@ -1380,7 +1387,6 @@ class TestCmdKitUpdateCli(unittest.TestCase):
             toml_utils.dump({
                 "version": "1.0",
                 "project_root": "..",
-                "system": {"name": "Test"},
                 "kits": {"sdlc": {"format": "Cypilot", "path": "config/kits/sdlc", "source": "github:o/r"}},
             }, adapter / "config" / "core.toml")
             cwd = os.getcwd()
@@ -1403,7 +1409,6 @@ class TestCmdKitUpdateCli(unittest.TestCase):
             toml_utils.dump({
                 "version": "1.0",
                 "project_root": "..",
-                "system": {"name": "Test", "kit": "sdlc"},
                 "kits": {"sdlc": {"format": "Cypilot", "path": "config/kits/sdlc", "source": "github:cyberfabric/cyber-pilot-kit-sdlc"}},
             }, adapter / "config" / "core.toml")
 
@@ -1430,7 +1435,6 @@ class TestCmdKitUpdateCli(unittest.TestCase):
             toml_utils.dump({
                 "version": "1.0",
                 "project_root": "..",
-                "system": {"name": "Test", "kit": "sdlc"},
                 "kits": {"sdlc": {"format": "Cypilot", "path": "config/kits/sdlc", "source": "github:o/r"}},
             }, adapter / "config" / "core.toml")
             cwd = os.getcwd()
@@ -1456,7 +1460,6 @@ class TestCmdKitUpdateCli(unittest.TestCase):
             toml_utils.dump({
                 "version": "1.0",
                 "project_root": "..",
-                "system": {"name": "Test"},
                 "kits": {"mykit": {"format": "Cypilot", "path": "config/kits/mykit", "source": "ftp://bad"}},
             }, adapter / "config" / "core.toml")
             cwd = os.getcwd()
@@ -1478,7 +1481,6 @@ class TestCmdKitUpdateCli(unittest.TestCase):
             toml_utils.dump({
                 "version": "1.0",
                 "project_root": "..",
-                "system": {"name": "Test"},
                 "kits": {"mykit": {"format": "Cypilot", "path": "config/kits/mykit"}},
             }, adapter / "config" / "core.toml")
             cwd = os.getcwd()

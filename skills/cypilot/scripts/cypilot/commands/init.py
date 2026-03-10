@@ -122,16 +122,15 @@ def _config_readme() -> str:
         "- Kit files can be edited directly; `cpt kit update` shows a diff for changes.\n"
     )
 
-def _default_core_toml(system_name: str, system_slug: str) -> dict:
-    """Build default core.toml data for a new project."""
+def _default_core_toml() -> dict:
+    """Build default core.toml data for a new project.
+
+    System identity (name, slug, kit) is defined in artifacts.toml only
+    (see ADR-0014: cpt-cypilot-adr-remove-system-from-core-toml).
+    """
     return {
         "version": "1.0",
         "project_root": "..",
-        "system": {
-            "name": system_name,
-            "slug": system_slug,
-            "kit": "sdlc",
-        },
         "kits": {
             "sdlc": {
                 "format": "Cypilot",
@@ -471,7 +470,7 @@ def cmd_init(argv: List[str]) -> int:
     desired_registry = generate_default_registry(project_name)
 
     # @cpt-begin:cpt-cypilot-algo-core-infra-create-config:p1:inst-write-core-toml
-    desired_core = _default_core_toml(project_name, root_system["slug"])
+    desired_core = _default_core_toml()
     # @cpt-end:cpt-cypilot-algo-core-infra-create-config:p1:inst-write-core-toml
     # @cpt-end:cpt-cypilot-algo-core-infra-create-config:p1:inst-mkdir-config
     # @cpt-end:cpt-cypilot-flow-core-infra-project-init:p1:inst-create-config

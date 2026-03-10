@@ -274,11 +274,15 @@ def cmd_adapter_info(argv: list[str]) -> int:
                 continue
             slug = kit_dir.name
             kd: dict = {"slug": slug}
-            # Version from core.toml (single source of truth)
+            # Resolve core.toml entry for this kit once
+            core_kit: dict = {}
             if core_data and isinstance(core_data.get("kits"), dict):
-                core_kit = core_data["kits"].get(slug, {})
-                if isinstance(core_kit, dict) and "version" in core_kit:
-                    kd["version"] = core_kit["version"]
+                _ck = core_data["kits"].get(slug, {})
+                if isinstance(_ck, dict):
+                    core_kit = _ck
+            # Version from core.toml (single source of truth)
+            if "version" in core_kit:
+                kd["version"] = core_kit["version"]
             # Name/slug from kit's conf.toml in source (fallback)
             kit_conf = kit_dir / "conf.toml"
             if kit_conf.is_file():
@@ -302,6 +306,9 @@ def cmd_adapter_info(argv: list[str]) -> int:
             wf_dir = kit_dir / "workflows"
             if wf_dir.is_dir():
                 kd["workflows"] = sorted(f.stem for f in wf_dir.glob("*.md"))
+            # Resources (from core.toml [kits.{slug}.resources])
+            if isinstance(core_kit.get("resources"), dict):
+                kd["resources"] = core_kit["resources"]
             kit_details[slug] = kd
     config["kit_details"] = kit_details
 
@@ -372,6 +379,13 @@ def _human_info(data: dict) -> None:
             wfs = kd.get("workflows", [])
             if wfs:
                 ui.substep(f"    Workflows: {', '.join(wfs)}")
+
+            res = kd.get("resources", {})
+            if res:
+                ui.substep(f"    Resources ({len(res)}):")
+                for rid, rbind in res.items():
+                    rpath = rbind.get("path", "?") if isinstance(rbind, dict) else str(rbind)
+                    ui.substep(f"      {rid}: {rpath}")
 
     # Systems with artifacts
     auto_reg = data.get("autodetect_registry") or {}

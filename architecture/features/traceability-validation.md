@@ -38,11 +38,11 @@
 
 <!-- /toc -->
 
-- [x] `p1` - **ID**: `cpt-cypilot-featstatus-traceability-validation`
+- [ ] `p1` - **ID**: `cpt-cypilot-featstatus-traceability-validation`
 
 ## 1. Feature Context
 
-- [x] `p1` - `cpt-cypilot-feature-traceability-validation`
+- [ ] `p1` - `cpt-cypilot-feature-traceability-validation`
 
 ### 1. Overview
 
@@ -71,7 +71,7 @@ Catches structural and traceability issues that AI agents miss or hallucinate â€
 
 ### Validate Artifacts
 
-- [x] `p1` - **ID**: `cpt-cypilot-flow-traceability-validation-validate`
+- [ ] `p1` - **ID**: `cpt-cypilot-flow-traceability-validation-validate`
 
 **Actor**: `cpt-cypilot-actor-user`
 
@@ -91,8 +91,9 @@ Catches structural and traceability issues that AI agents miss or hallucinate â€
 3. [x] - `p1` - Resolve artifacts to validate: if `--artifact` specified resolve single artifact from registry, otherwise collect all registered Cypilot-format artifacts - `inst-resolve-artifacts`
 4. [x] - `p1` - **IF** registry-level errors detected **RETURN** FAIL report immediately - `inst-if-registry-fail`
 5. [x] - `p1` - Run self-check: validate kit examples against templates to ensure kit integrity - `inst-self-check`
-6. [x] - `p1` - **FOR EACH** artifact to validate - `inst-foreach-artifact`
-   1. [x] - `p1` - Load kind-specific constraints from kit - `inst-load-constraints`
+6. [ ] - `p1` - **FOR EACH** kit: resolve resource paths â€” for manifest-driven kits, resolve constraints, templates, and examples from resource bindings in `core.toml`; for legacy kits, use default directory structure - `inst-resolve-kit-resources`
+7. [x] - `p1` - **FOR EACH** artifact to validate - `inst-foreach-artifact`
+   1. [x] - `p1` - Load kind-specific constraints from kit (using resolved resource paths) - `inst-load-constraints`
    2. [x] - `p1` - Validate artifact structure using `cpt-cypilot-algo-traceability-validation-validate-structure` - `inst-validate-structure`
 7. [x] - `p1` - **IF** per-artifact errors exist **RETURN** FAIL report (stop before cross-validation) - `inst-if-structure-fail`
 8. [x] - `p1` - Cross-validate references across all artifacts using `cpt-cypilot-algo-traceability-validation-cross-validate` - `inst-cross-validate`
@@ -387,7 +388,7 @@ Catches structural and traceability issues that AI agents miss or hallucinate â€
 **Output**: `KitConstraints` object or list of parse errors
 
 **Steps**:
-1. [x] - `p1` - Load `constraints.toml` from kit root, parse TOML, delegate to `parse_kit_constraints` - `inst-load-toml`
+1. [x] - `p1` - Load `constraints.toml` from kit root (or from resolved resource binding path for manifest-driven kits), parse TOML, delegate to `parse_kit_constraints` - `inst-load-toml`
 2. [x] - `p1` - Parse kit constraints: iterate artifact kinds, parse headings, identifiers, TOC flag, normalize heading IDs and prev/next references - `inst-parse-kit`
 3. [x] - `p1` - Parse individual ID constraint: validate kind, required, name, template, examples, task, priority, to_code, headings, references - `inst-parse-id-constraint`
 4. [x] - `p1` - Parse heading constraint: validate level, pattern, description, required, multiple, numbered, id, prev/next, pointer - `inst-parse-heading`

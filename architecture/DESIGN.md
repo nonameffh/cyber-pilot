@@ -59,7 +59,7 @@ Each kit is a file package: a collection of artifact definitions (rules, checkli
 
 - [x] `p1` - `cpt-cypilot-fr-core-config`
 
-**Design Response**: The config directory (`{cypilot_path}/config/`) holds all project configuration. `core.toml` stores the project root, system definition (name, slug, kit), and kit registrations (format, path, version). `artifacts.toml` stores the artifact registry: system autodetect rules, ignore patterns, and codebase definitions. `AGENTS.md` and `SKILL.md` are user-editable extension points for agent navigation rules and skill instructions respectively. `{cypilot_path}/config/kits/<slug>/` directories hold all kit files — artifacts, workflows, per-kit SKILL.md, constraints, and scripts (all user-editable). Kit-specific config files (e.g., `pr-review.toml`) also live in `config/`. `{cypilot_path}/.gen/` holds only auto-generated aggregate files (`AGENTS.md`, `SKILL.md`, `README.md`) assembled from installed kits. All TOML config files use deterministic serialization. Kit files are user-editable and preserved across updates via interactive diff.
+**Design Response**: The config directory (`{cypilot_path}/config/`) holds all project configuration. `core.toml` stores the project root and kit registrations (format, path, version, source, resource bindings for manifest-driven kits). `artifacts.toml` stores the artifact registry — including system definitions (name, slug, kit), autodetect rules, ignore patterns, and codebase definitions. System identity is defined exclusively in `artifacts.toml` `[[systems]]` (see `cpt-cypilot-adr-remove-system-from-core-toml`). `AGENTS.md` and `SKILL.md` are user-editable extension points for agent navigation rules and skill instructions respectively. `{cypilot_path}/config/kits/<slug>/` directories hold all kit files — artifacts, workflows, per-kit SKILL.md, constraints, and scripts (all user-editable). Kit-specific config files (e.g., `pr-review.toml`) also live in `config/`. `{cypilot_path}/.gen/` holds only auto-generated aggregate files (`AGENTS.md`, `SKILL.md`, `README.md`) assembled from installed kits. All TOML config files use deterministic serialization. Kit files are user-editable and preserved across updates via interactive diff.
 
 ##### Deterministic Skill Engine
 
@@ -85,6 +85,51 @@ Each kit is a file package: a collection of artifact definitions (rules, checkli
 
 **Design Response**: Kit Manager handles kit lifecycle: installation from GitHub repositories (`cpt kit install --github <owner/repo>`), copying kit files into the kit's config directory, registration in `core.toml` (with config path, GitHub source, and version), and version tracking via GitHub tags. Each kit is a collection of ready-to-use files (rules, templates, checklists, examples, constraints, workflows, scripts). Kit updates download the new version from GitHub and use file-level diff: each file in the new version is compared against the user's installed copy, and all changed files are presented as unified diffs with interactive accept/decline/accept-all/decline-all/modify prompts. `cpt kit move-config <slug>` relocates a kit's config output directory. Cypilot core bundles no kits — all kits are external GitHub packages. A plugin system for custom CLI subcommands and hooks is planned for p2.
 
+##### Declarative Kit Installation Manifest
+
+- [ ] `p1` - `cpt-cypilot-fr-core-kit-manifest`
+
+**Design Response**: A kit MAY include a declarative installation manifest (`manifest.toml`) at its root. When present, the manifest governs the entire installation and update process — only resources declared in the manifest are installed, and each resource is placed at its declared (or user-overridden) path. When absent, the Kit Manager falls back to the current behavior: copy predefined content directories (`artifacts/`, `codebase/`, `scripts/`, `workflows/`) and content files (`constraints.toml`, `SKILL.md`, `AGENTS.md`) into the kit's config directory.
+
+The manifest declares every resource the kit provides. Each resource has: an **identifier** (e.g., `adr_template_path`) used as a template variable `{adr_template_path}` in kit files and workflows, a **source** path (relative to kit package root), a **default destination** (relative to kit root), a **type** (`file` or `directory`), and a **`user_modifiable`** flag. If `user_modifiable = true`, the system prompts the user for the destination path during installation (offering the default); if `false`, the resource is placed at the default path silently.
+
+The manifest also declares a **kit root** (`root`) — the base directory for all resources (default: `{cypilot_path}/config/kits/{slug}`). The kit root itself is user-modifiable during installation, allowing the entire kit to be relocated.
+
+**Resolved resource paths** are stored in `{cypilot_path}/config/core.toml` under the kit's `[kits.{slug}.resources]` section as `identifier = "resolved_path"` pairs. All paths are **always relative to `{cypilot_path}`** (the adapter directory) — absolute paths are never stored. Paths may contain `..` components for resources placed outside the adapter tree (e.g., `../architecture/templates/ADR/template.md`). These paths are the single source of truth for where kit resources live in the project. At runtime, each binding is resolved to an absolute path via `({cypilot_path} / binding).resolve()`. The `cpt info` command outputs all resolved resource variables for each installed kit, enabling agents and scripts to discover resource locations programmatically.
+
+**Template variable resolution**: Kit files (rules.md, SKILL.md, workflows, etc.) and the execution protocol can reference resource identifiers as `{identifier}` template variables. During installation, variables in kit files are resolved to their final paths. During workflow execution (generate/analyze), the execution protocol resolves resource variables from `core.toml` so that agents always operate on the correct paths regardless of user customization.
+
+**Update behavior**: On `cpt kit update`, the Kit Manager reads the manifest from the new kit version and the stored resource paths from `core.toml`. Existing resources are updated at their registered paths via file-level diff. New resources (present in the new manifest but not in `core.toml`) trigger an interactive prompt asking the user for a destination path, then register the path. Removed resources (present in `core.toml` but absent from the new manifest) produce a warning; the path registration is preserved in `core.toml` (no auto-deletion of user files).
+
+**Legacy install migration**: When a kit update introduces a `manifest.toml` but the existing `core.toml` kit entry has no `[kits.{slug}.resources]` section (legacy install with only a root `path`), the Kit Manager auto-populates all resource bindings by computing each resource's path from the existing kit root + the manifest's `default_path` values. This ensures all tracked resources are registered without requiring re-installation. User-modifiable resources that already exist at their computed default paths are registered silently; only truly new resources (files not present on disk) trigger a path prompt.
+
+**Manifest format** (`manifest.toml`):
+
+```toml
+[manifest]
+version = "1.0"
+root = "{cypilot_path}/config/kits/{slug}"
+user_modifiable = true
+
+[[resources]]
+id = "adr_artifacts"
+description = "ADR artifact definitions (template, rules, checklist, examples)"
+source = "artifacts/ADR"
+default_path = "artifacts/ADR"
+type = "directory"
+user_modifiable = true
+
+[[resources]]
+id = "constraints"
+description = "Kit structural constraints"
+source = "constraints.toml"
+default_path = "constraints.toml"
+type = "file"
+user_modifiable = false
+```
+
+**Validation**: The manifest is validated against `kit-manifest.schema.json` during kit installation and update. Schema checks: all `id` values are unique, all `source` paths exist in the kit package, `default_path` values are valid relative paths, `type` matches the actual source (file vs directory).
+
 ##### ID and Traceability System
 
 - [x] `p1` - `cpt-cypilot-fr-core-traceability`
@@ -105,13 +150,13 @@ Each kit is a file package: a collection of artifact definitions (rules, checkli
 
 - [ ] `p2` - `cpt-cypilot-fr-core-version`
 
-**Design Response**: The `update` command copies the cached skill into the project, detects directory layout and automatically restructures if the old layout is detected, migrates `{cypilot_path}/config/core.toml`, migrates bundled kit references to GitHub sources for projects upgrading from versions < 3.0.8 (see `cpt-cypilot-adr-extract-sdlc-kit`), and regenerates agent entry points. The update command does NOT update kit files — kit updates are a separate operation via `cpt kit update`. Config migration preserves all user settings. Version information is accessible via `--version`.
+**Design Response**: The `update` command copies the cached skill into the project, detects directory layout and automatically restructures if the old layout is detected, migrates `{cypilot_path}/config/core.toml` (including removal of the legacy `[system]` section per `cpt-cypilot-adr-remove-system-from-core-toml`), migrates bundled kit references to GitHub sources for projects upgrading from versions < 3.0.8 (see `cpt-cypilot-adr-extract-sdlc-kit`), and regenerates agent entry points. The update command does NOT update kit files — kit updates are a separate operation via `cpt kit update`. Config migration preserves all user settings. Version information is accessible via `--version`.
 
 ##### CLI Configuration Interface
 
 - [ ] `p2` - `cpt-cypilot-fr-core-cli-config`
 
-**Design Response**: Core CLI commands manage `core.toml` (system definitions, ignore lists, kit registrations). All config changes are validated against schemas before application. Dry-run mode is supported. Kit-specific CLI subcommands are planned for p2.
+**Design Response**: Core CLI commands manage `core.toml` (kit registrations, resource bindings, ignore lists) and `artifacts.toml` (system definitions, autodetect rules). System identity is managed in `artifacts.toml` only (see `cpt-cypilot-adr-remove-system-from-core-toml`). All config changes are validated against schemas before application. Dry-run mode is supported. Kit-specific CLI subcommands are planned for p2.
 
 ##### VS Code Plugin
 
@@ -200,6 +245,7 @@ The following architecture decision records (ADRs) drive the design:
 - `cpt-cypilot-adr-structured-id-format` — structured cpt-* ID format with @cpt-* code tags
 - `cpt-cypilot-adr-git-style-conflict-markers` — git-style conflict markers for interactive merge
 - `cpt-cypilot-adr-extract-sdlc-kit` — extract SDLC kit to separate GitHub repository
+- `cpt-cypilot-adr-remove-system-from-core-toml` — remove `[system]` from core.toml; artifacts.toml is single source for system identity
 
 ### 1.3 Architecture Layers
 
@@ -209,7 +255,7 @@ At the top sits the **AI Agent layer** — external coding assistants (Windsurf,
 
 The **Global CLI Proxy layer** (`cypilot` / `cpt`, installed via pipx) is a thin stateless shell. It resolves the target skill — either from the project's local install directory or from the global cache (`~/.cypilot/cache/`) — and forwards the invocation. The proxy contains zero skill logic.
 
-Below the proxy is the **Core Skill Engine layer** — the heart of the system. It owns the command router, JSON output serialization, SKILL.md, workflows, and the execution protocol. Three core components live here: the **Validator** (deterministic structural and cross-artifact checks), the **Traceability Engine** (ID scanning, resolution, and coverage analysis), and the **Config Manager** (schema-validated JSON config read/write with migration support).
+Below the proxy is the **Core Skill Engine layer** — the heart of the system. It owns the command router, JSON output serialization, SKILL.md, workflows, and the execution protocol. Three core components live here: the **Validator** (deterministic structural and cross-artifact checks), the **Traceability Engine** (ID scanning, resolution, and coverage analysis), and the **Config Manager** (schema-validated TOML config read/write with migration support; system identity sourced from `artifacts.toml`, kit registrations from `core.toml`).
 
 At the bottom is the **Kit layer**. The **Kit Manager** handles kit installation from GitHub repositories, registration (with source and version tracking), file-level diff updates, kit config relocation, and layout migration. Each kit is an independently installable file package. Cypilot core bundles no kits — during `cpt init`, the user is prompted to install the SDLC kit (`cyberfabric/cyber-pilot-kit-sdlc`) with `[a]ccept / [d]ecline`. A plugin system for custom hooks and CLI subcommands is planned for p2.
 
@@ -373,6 +419,8 @@ Validation rules cannot be bypassed or weakened in STRICT mode. The deterministi
 | Blueprint | DEPRECATED per `cpt-cypilot-adr-remove-blueprint-system` — removed from architecture. Kit resources are now maintained as direct files. | N/A |
 | Constraint | Kit-wide rules for ID kinds, headings, and cross-artifact references | `{cypilot_path}/config/kits/<slug>/constraints.toml` |
 | Workflow | A Markdown file with frontmatter, phases, and validation criteria | `{cypilot_path}/.core/workflows/` |
+| Manifest | Optional declarative installation config (`manifest.toml`) declaring kit resources, their identifiers, default paths, types, and user-modifiability flags. Governs installation and update when present; absent → legacy copy behavior | Kit source root `manifest.toml`, validated against `kit-manifest.schema.json` |
+| ResourceBinding | A resolved mapping from a manifest resource identifier to its actual filesystem path in the project. Stored in `core.toml` under `[kits.{slug}.resources]` | `{cypilot_path}/config/core.toml` → kits.{slug}.resources |
 
 **Relationships**:
 - System → Kit: each system is assigned to exactly one kit (by slug)
@@ -382,6 +430,8 @@ Validation rules cannot be bypassed or weakened in STRICT mode. The deterministi
 - Kit → Artifact Resources: each kit has per-artifact resource files (rules.md, template.md, checklist.md, examples/) for each artifact kind it defines
 - Kit → Constraints: kit-wide `constraints.toml` defines allowed/required ID kinds per artifact kind
 - Kit → SKILL extension: kit `SKILL.md` composes into the main SKILL.md
+- Kit → Manifest: a kit MAY have one `manifest.toml` manifest (0..1). If present, it declares all resources and governs installation
+- Kit → ResourceBinding[]: a manifest-driven kit has zero or more resolved resource bindings stored in `core.toml` under `[kits.{slug}.resources]`. Each binding maps a resource identifier to a filesystem path
 - Artifact → Identifier[]: each artifact contains zero or more ID definitions and references
 - Identifier → Identifier: cross-references between definitions and references across artifacts
 - Constraint → Identifier: constraints define which ID kinds are allowed/required per artifact kind
@@ -501,7 +551,8 @@ Provides the deterministic quality gate that ensures artifacts meet structural r
 - Priority marker validation
 - Placeholder detection (TODO, TBD, FIXME)
 - Cross-reference validation (covered_by, checked consistency)
-- Constraint enforcement from `constraints.toml` (headings scoping, reference rules)
+- Constraint enforcement from `constraints.toml` (headings scoping, reference rules). For manifest-driven kits, the path to `constraints.toml` is resolved from the kit's resource bindings in `core.toml`
+- Kit structural validation (`validate-kits`): verify kit directory exists with required files. For manifest-driven kits, resolves paths to constraints, templates, and examples from resource bindings in `core.toml` instead of assuming the default kit directory structure
 - TOC validation (`validate-toc`): verify anchors resolve, all headings covered, TOC not stale
 - Stable error codes (`error_codes.py`): machine-readable codes for all validation issues, used by fixing prompts and downstream consumers
 - Fixing prompt generation (`fixing.py`): enrich errors with actionable prompts for LLM agents
@@ -515,7 +566,7 @@ Does NOT perform semantic validation (checklist review is done by AI agents). Do
 
 - `cpt-cypilot-component-skill-engine` — receives validation commands
 - `cpt-cypilot-component-traceability-engine` — uses ID scanning results
-- `cpt-cypilot-component-config-manager` — reads config for system/artifact resolution
+- `cpt-cypilot-component-config-manager` — reads config for system/artifact resolution; reads resource bindings for manifest-driven kit path resolution
 - Installed kits may register validation hooks via constraints.toml
 
 #### Traceability Engine
@@ -556,8 +607,9 @@ Ensures config integrity by centralizing all config file operations behind schem
 
 ##### Responsibility scope
 
-- CRUD operations on `{cypilot_path}/config/core.toml` (system definitions, kit registrations, ignore lists)
-- Schema validation before any write operation
+- CRUD operations on `{cypilot_path}/config/core.toml` (system definitions, kit registrations, ignore lists, resource bindings)
+- Resource binding management: read/write `[kits.{slug}.resources]` section in `core.toml` — stores resolved resource identifier → path mappings for manifest-driven kits. Provides a lookup API so other components (Skill Engine, workflows) can resolve `{identifier}` template variables to filesystem paths
+- Schema validation before any write operation (including resource bindings validated against `core-config.schema.json`)
 - Deterministic TOML serialization
 - Config migration between versions (with backup before migration)
 - JSON → TOML format migration (`migrate-config` command): detect legacy `.json` files, convert to `.toml`, validate, remove originals
@@ -585,17 +637,19 @@ Manages the kit lifecycle — installing, registering, and updating kits. Enable
 ##### Responsibility scope
 
 - Kit installation from GitHub: download kit from GitHub repository (`cpt kit install --github <owner/repo>`), copy all kit files from source into `{cypilot_path}/config/kits/{slug}/`, register in `core.toml` with GitHub source and version, regenerate `.gen/AGENTS.md` and `.gen/SKILL.md` to include the new kit's navigation and skill routing. All files in the kit's config directory are user-editable and preserved across updates via interactive diff
-- Kit registration: add kit entry to `{cypilot_path}/config/core.toml` with config output path, GitHub source (`github:<owner>/<repo>`), and version (GitHub tag)
+- Manifest-driven installation (see `cpt-cypilot-fr-core-kit-manifest`): if the kit source contains `manifest.toml`, the Kit Manager validates it against `kit-manifest.schema.json`, reads all declared resources, prompts the user for destination paths on `user_modifiable` resources (offering defaults), copies each resource to its resolved path, resolves template variables (`{identifier}`) in kit files, and registers all resolved paths in `core.toml` under `[kits.{slug}.resources]`. If no `manifest.toml` is present, falls back to the current behavior (copy predefined content directories and files). The kit root directory itself (`{cypilot_path}/config/kits/{slug}`) may be relocated by the user during manifest-driven installation if the manifest declares `user_modifiable = true`
+- Kit registration: add kit entry to `{cypilot_path}/config/core.toml` with config output path, GitHub source (`github:<owner>/<repo>`), version (GitHub tag), and resolved resource paths (`resources` map)
 - Version tracking: store kit version in `{cypilot_path}/config/kits/{slug}/conf.toml`; kit source and version also tracked in `core.toml`
-- Update modes: force (`--force`) overwrites all kit files; interactive (default) uses file-level diff — compares each file in the new version against user's installed copy, shows unified diffs, prompts with accept/decline/accept-all/decline-all/modify via Resource Diff Engine
-- Kit config relocation: `cpt kit move-config <slug>` moves the kit's config directory to a new location, updates `core.toml`
+- Update modes: force (`--force`) overwrites all kit files; interactive (default) uses file-level diff — compares each file in the new version against user's installed copy, shows unified diffs, prompts with accept/decline/accept-all/decline-all/modify via Resource Diff Engine. For manifest-driven kits, updates apply diffs to the registered resource paths (not just the kit directory), detect new resources in the updated manifest (prompt user for path and register), and warn about resources removed from the manifest (preserve existing paths in `core.toml`). When updating a legacy-installed kit (no `resources` section in `core.toml`) and the new version introduces a manifest, auto-populate all resource bindings from existing kit root + manifest defaults before applying diffs
+- Resource path exposure: resolved resource variables are returned by `cpt info` as part of kit information, enabling agents and scripts to discover resource locations programmatically
+- Kit config relocation: `cpt kit move-config <slug>` moves the kit's config directory to a new location, updates `core.toml` (including all resource paths that are relative to the kit root)
 - Layout restructuring: detect old directory layout and automatically restructure (move generated outputs from `.gen/kits/` to `config/kits/`, clean up `.gen/kits/`)
-- Kit structural validation (`validate-kits` command): verify kit directory exists with required files (`conf.toml`, `constraints.toml`, `artifacts/` directory)
+- Kit structural validation (`validate-kits` command): verify kit directory exists with required files (`conf.toml`, `constraints.toml`, `artifacts/` directory); for manifest-driven kits, additionally verify all registered resource paths exist on disk
 - Plugin loading (p2): discover and load kit Python entry points at runtime
 
 ##### Responsibility boundaries
 
-Does NOT own kit resource content — kit files are maintained directly. Does NOT perform kit-specific validation beyond structural checks.
+Does NOT own kit resource content — kit files are maintained directly. Does NOT perform kit-specific validation beyond structural checks. Does NOT interpret resource content — only manages resource placement and path registration.
 
 ##### Related components (by ID)
 
@@ -654,7 +708,7 @@ The following kits are external packages that can be installed and managed by th
 | `where-defined --id <id>` | Find where an ID is defined | 0=found, 2=not found |
 | `where-used --id <id>` | Find where an ID is referenced | 0 |
 | `get-content --id <id>` | Get content block for an ID | 0=found, 2=not found |
-| `info` | Show adapter status and registry | 0 |
+| `info` | Show adapter status, registry, and resolved resource variables per kit | 0 |
 | `agents [--agent A]` | Generate agent entry points | 0 |
 | `doctor` | Environment health check | 0=healthy, 2=issues |
 | `config show` | Display current core config | 0 |
@@ -768,8 +822,21 @@ sequenceDiagram
         alt user accepts
             User-->>Skill Engine: [a]ccept
             Skill Engine->>Kit Manager: install kit from github:cyberfabric/cyber-pilot-kit-sdlc
-            Kit Manager->>Kit Manager: download, copy files to config/kits/sdlc/
-            Kit Manager->>Config Manager: register kit in core.toml with source + version
+            Kit Manager->>Kit Manager: download kit source
+            alt manifest.toml present in kit source
+                Kit Manager->>Kit Manager: validate manifest.toml against kit-manifest.schema.json
+                Kit Manager->>Kit Manager: read manifest resources
+                loop each user_modifiable resource
+                    Kit Manager->>User: "Path for {description}?" (default: {default_path})
+                    User-->>Kit Manager: accepts or overrides path
+                end
+                Kit Manager->>Kit Manager: copy resources to resolved paths
+                Kit Manager->>Kit Manager: resolve {identifier} template variables in kit files
+                Kit Manager->>Config Manager: register kit + resource bindings in core.toml
+            else no manifest.toml (legacy mode)
+                Kit Manager->>Kit Manager: copy files to config/kits/sdlc/
+                Kit Manager->>Config Manager: register kit in core.toml with source + version
+            end
             Kit Manager->>Kit Manager: compose SKILL.md and AGENTS.md extensions
             Skill Engine->>Skill Engine: regenerate .gen/AGENTS.md, .gen/SKILL.md
             Skill Engine->>Agent Generator: regenerate entry points (include kit workflows)
@@ -781,7 +848,7 @@ sequenceDiagram
     end
 ```
 
-**Description**: User initializes Cypilot in a project. The skill engine asks for install directory and agent selection. It defines a **root system** (name and slug derived from the project directory name), creates core configs (`core.toml` with root system, `artifacts.toml` with default autodetect rules), generates agent entry points, and sets up `{cypilot_path}/config/AGENTS.md` with default WHEN rules. After core setup, the tool prompts `Install SDLC kit? [a]ccept [d]ecline`. If accepted, the kit is downloaded from GitHub and installed inline. If declined, the user can install kits later via `cpt kit install`.
+**Description**: User initializes Cypilot in a project. The skill engine asks for install directory and agent selection. It defines a **root system** (name and slug derived from the project directory name), creates core configs (`core.toml` with root system, `artifacts.toml` with default autodetect rules), generates agent entry points, and sets up `{cypilot_path}/config/AGENTS.md` with default WHEN rules. After core setup, the tool prompts `Install SDLC kit? [a]ccept [d]ecline`. If accepted, the kit is downloaded from GitHub. If the kit source contains `manifest.toml`, the Kit Manager validates the manifest, reads declared resources, prompts the user for destination paths on `user_modifiable` resources, copies each resource to its resolved path, resolves template variables in kit files, and registers all resource bindings in `core.toml`. If no `manifest.toml` is present, files are copied to the default kit config directory. If declined, the user can install kits later via `cpt kit install`.
 
 **Root AGENTS.md injection**: During initialization (and verified on every CLI invocation), the engine ensures the project root `AGENTS.md` file contains a managed block that points agents to the Cypilot navigation entry:
 
@@ -943,7 +1010,7 @@ sequenceDiagram
 
 Not applicable — Cypilot does not use a database. All persistent state is stored in the filesystem:
 
-- **`{cypilot_path}/config/core.toml`** — core config (system definitions, kit registrations with config paths, ignore lists)
+- **`{cypilot_path}/config/core.toml`** — core config (system definitions, kit registrations with config paths and resolved resource bindings, ignore lists). For manifest-driven kits, the `[kits.{slug}.resources]` section stores identifier → path mappings (e.g., `adr_artifacts = "architecture/ADR"`)
 - **`{cypilot_path}/config/artifacts.toml`** — artifact registry (systems, artifacts, codebases)
 - **`{cypilot_path}/config/kits/<slug>/`** — per-kit files (conf.toml, SKILL.md, constraints.toml, artifacts/, codebase/, workflows/, scripts/) — all user-editable, path configurable per kit, preserved via interactive diff on update
 - **`{cypilot_path}/.gen/`** — top-level auto-generated files only (AGENTS.md, SKILL.md, README.md)
@@ -958,11 +1025,12 @@ The validator uses single-pass scanning to meet the ≤ 3 second requirement. Ar
 
 ### Extensibility Model
 
-The kit plugin system is designed for extension at three levels:
+The kit plugin system is designed for extension at four levels:
 
 1. **Kit-level**: New kits can be created for entirely new domains (e.g., API design, infrastructure-as-code). Each kit is a self-contained package installable from GitHub.
 2. **Artifact-level**: Within a kit, new artifact kinds can be added via config. Kits may support adding custom artifact types through plugin CLI commands.
 3. **Resource-level**: Within an artifact kind, users can override templates, extend checklists, modify rules, and embed custom prompts. Overrides are preserved across updates.
+4. **Placement-level**: Kits with a declarative manifest (`manifest.toml`) allow users to customize where each resource is placed in the project during installation. Resource identifiers become template variables resolvable by workflows and the execution protocol, enabling kit resources to be scattered across the project tree (not just under the kit config directory).
 
 ### Migration Strategy
 
@@ -1062,7 +1130,7 @@ The following design domains are not applicable to Cypilot and are explicitly ex
 | Spec | File | Drives |
 |------|------|--------|
 | CLI Interface | [specs/cli.md](./specs/cli.md) | `cpt-cypilot-interface-cli-json`, `cpt-cypilot-fr-core-installer`, `cpt-cypilot-fr-core-init`, `cpt-cypilot-fr-core-cli-config` |
-| Kit Specification | [specs/kit/](./specs/kit/) | `cpt-cypilot-fr-core-kits`, `cpt-cypilot-component-kit-manager`, `cpt-cypilot-component-validator` |
+| Kit Specification | [specs/kit/](./specs/kit/) | `cpt-cypilot-fr-core-kits`, `cpt-cypilot-fr-core-kit-manifest`, `cpt-cypilot-component-kit-manager`, `cpt-cypilot-component-validator` |
 | Identifiers & Traceability | [specs/traceability.md](./specs/traceability.md) | `cpt-cypilot-fr-core-traceability`, `cpt-cypilot-component-traceability-engine` |
 | CDSL | [specs/CDSL.md](./specs/CDSL.md) | `cpt-cypilot-fr-core-cdsl` |
 | Artifacts Registry | [specs/artifacts-registry.md](./specs/artifacts-registry.md) | `cpt-cypilot-fr-core-config`, `cpt-cypilot-component-config-manager` |

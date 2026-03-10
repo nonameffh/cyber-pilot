@@ -28,6 +28,9 @@
   - [Kit Validation Engine](#kit-validation-engine)
   - [Kit Validate by Path](#kit-validate-by-path)
   - [Kit Config Helpers](#kit-config-helpers)
+  - [Manifest-Driven Installation](#manifest-driven-installation)
+  - [Manifest Legacy Migration](#manifest-legacy-migration)
+  - [Manifest Resource Resolution](#manifest-resource-resolution)
 - [4. States (CDSL)](#4-states-cdsl)
   - [Kit Installation State](#kit-installation-state)
 - [5. Definitions of Done](#5-definitions-of-done)
@@ -39,11 +42,11 @@
 
 <!-- /toc -->
 
-- [x] `p1` - **ID**: `cpt-cypilot-featstatus-kit-management`
+- [ ] `p1` - **ID**: `cpt-cypilot-featstatus-kit-management`
 
 ## 1. Feature Context
 
-- [x] `p1` - `cpt-cypilot-featstatus-kit-management`
+- [ ] `p1` - `cpt-cypilot-featstatus-kit-management`
 
 ### 1. Overview
 
@@ -51,7 +54,7 @@ Manage kit lifecycle — installation, file-level diff updates, interactive conf
 
 ### 2. Purpose
 
-Enables users to install, update, and validate kit packages with interactive file-level diffs, automatic `.gen/` aggregation, and structural validation. Kits are direct file packages stored in `config/kits/{slug}/` — no blueprint processing, no three-way merge, no hash detection.
+Enables users to install, update, and validate kit packages with interactive file-level diffs, automatic `.gen/` aggregation, and structural validation. Kits are direct file packages stored in `config/kits/{slug}/` — no blueprint processing, no three-way merge, no hash detection. Kits may optionally include a `manifest.toml` for declarative resource placement, user-modifiable paths, and template variable resolution.
 
 ### 3. Actors
 
@@ -62,8 +65,8 @@ Enables users to install, update, and validate kit packages with interactive fil
 
 ### 4. References
 
-- **PRD**: `cpt-cypilot-fr-core-kits`, `cpt-cypilot-fr-core-resource-diff`
-- **Design**: `cpt-cypilot-component-kit-manager`, `cpt-cypilot-component-validator`
+- **PRD**: `cpt-cypilot-fr-core-kits`, `cpt-cypilot-fr-core-kit-manifest`, `cpt-cypilot-fr-core-resource-diff`
+- **Design**: `cpt-cypilot-component-kit-manager`, `cpt-cypilot-component-config-manager`, `cpt-cypilot-component-validator`
 - **ADR**: `cpt-cypilot-adr-remove-blueprint-system`
 
 ---
@@ -72,7 +75,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 
 ### Kit Install CLI
 
-- [x] `p1` - **ID**: `cpt-cypilot-flow-kit-install-cli`
+- [ ] `p1` - **ID**: `cpt-cypilot-flow-kit-install-cli`
 
 **Actor**: `cpt-cypilot-actor-user`
 
@@ -85,13 +88,14 @@ Enables users to install, update, and validate kit packages with interactive fil
 4. [x] - `p1` - Resolve project root and cypilot directory via `_resolve_cypilot_dir` - `inst-resolve-project`
 5. [x] - `p1` - Check if kit already installed; fail if exists without --force - `inst-check-existing`
 6. [x] - `p1` - **IF** --dry-run: return preview and STOP - `inst-dry-run`
-7. [x] - `p1` - Delegate to `install_kit()` for actual installation - `inst-delegate-install`
-8. [x] - `p1` - Regenerate `.gen/` aggregates via `regenerate_gen_aggregates` - `inst-regen-gen`
-9. [x] - `p1` - Format and output result JSON - `inst-output-result`
+7. [ ] - `p1` - **IF** kit source contains `manifest.toml`: delegate to manifest-driven installation via `cpt-cypilot-algo-kit-manifest-install` - `inst-manifest-install`
+8. [x] - `p1` - **ELSE**: delegate to `install_kit()` for legacy installation - `inst-delegate-install`
+9. [x] - `p1` - Regenerate `.gen/` aggregates via `regenerate_gen_aggregates` - `inst-regen-gen`
+10. [x] - `p1` - Format and output result JSON - `inst-output-result`
 
 ### Kit Update CLI
 
-- [x] `p1` - **ID**: `cpt-cypilot-flow-kit-update-cli`
+- [ ] `p1` - **ID**: `cpt-cypilot-flow-kit-update-cli`
 
 **Actor**: `cpt-cypilot-actor-user`
 
@@ -102,9 +106,10 @@ Enables users to install, update, and validate kit packages with interactive fil
 2. [x] - `p1` - Validate kit source directory exists - `inst-validate-source`
 3. [x] - `p1` - Read slug from source conf.toml - `inst-read-slug`
 4. [x] - `p1` - Resolve project root and cypilot directory - `inst-resolve-project`
-5. [x] - `p1` - Delegate to `update_kit()` with interactive/auto_approve/force flags - `inst-delegate-update`
-6. [x] - `p1` - Regenerate `.gen/` aggregates (unless dry-run) - `inst-regen-gen`
-7. [x] - `p1` - Format version status, accepted/declined files, and output result - `inst-format-output`
+5. [ ] - `p1` - **IF** kit source contains `manifest.toml` and existing install has no resource bindings: trigger legacy install migration via `cpt-cypilot-algo-kit-manifest-legacy-migration` - `inst-legacy-migration`
+6. [x] - `p1` - Delegate to `update_kit()` with interactive/auto_approve/force flags - `inst-delegate-update`
+7. [x] - `p1` - Regenerate `.gen/` aggregates (unless dry-run) - `inst-regen-gen`
+8. [x] - `p1` - Format version status, accepted/declined files, and output result - `inst-format-output`
 
 ### Kit Validate CLI
 
@@ -164,7 +169,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 **Steps**:
 1. [x] - `p1` - Scan `config/kits/*/` for all installed kit directories - `inst-scan-kits`
 2. [x] - `p1` - Collect metadata (skill_nav, agents_content) from each kit - `inst-collect-all-metadata`
-3. [x] - `p1` - Read project name from `config/core.toml [system].name` - `inst-read-project-name`
+3. [x] - `p1` - Read project name from `config/artifacts.toml [[systems]][0].name` (per `cpt-cypilot-adr-remove-system-from-core-toml`) - `inst-read-project-name`
 4. [x] - `p1` - Compose and write `.gen/AGENTS.md` with navigation rules and kit agent content - `inst-write-gen-agents`
 5. [x] - `p1` - Compose and write `.gen/SKILL.md` with per-kit skill navigation pointers - `inst-write-gen-skill`
 6. [x] - `p1` - Write `.gen/README.md` using `_gen_readme()` - `inst-write-gen-readme`
@@ -179,12 +184,13 @@ Enables users to install, update, and validate kit packages with interactive fil
 
 **Steps**:
 1. [x] - `p1` - Validate kit source directory exists - `inst-validate-source`
-2. [x] - `p1` - Copy kit content to `config/kits/{slug}/` via `_copy_kit_content` - `inst-copy-content`
-3. [x] - `p1` - Read version from source `conf.toml` if not provided - `inst-read-version`
-4. [x] - `p1` - Seed config files from kit's scripts/ directory - `inst-seed-configs`
-5. [x] - `p1` - Register kit in `core.toml` with path and version - `inst-register-core`
-6. [x] - `p1` - Collect metadata for `.gen/` aggregation - `inst-collect-meta`
-7. [x] - `p1` - **RETURN** result with status, files_copied, actions, skill_nav, agents_content - `inst-return-result`
+2. [x] - `p1` - **IF** kit source contains `manifest.toml`: delegate to `install_kit_with_manifest` and **RETURN** its result - `inst-manifest-install`
+3. [x] - `p1` - Copy kit content to `config/kits/{slug}/` via `_copy_kit_content` (legacy path) - `inst-copy-content`
+4. [x] - `p1` - Read version from source `conf.toml` if not provided - `inst-read-version`
+5. [x] - `p1` - Seed config files from kit's scripts/ directory - `inst-seed-configs`
+6. [x] - `p1` - Register kit in `core.toml` with path and version - `inst-register-core`
+7. [x] - `p1` - Collect metadata for `.gen/` aggregation - `inst-collect-meta`
+8. [x] - `p1` - **RETURN** result with status, files_copied, actions, skill_nav, agents_content - `inst-return-result`
 
 ### Kit Update
 
@@ -199,11 +205,12 @@ Enables users to install, update, and validate kit packages with interactive fil
 2. [x] - `p1` - **IF** dry_run: return early with dry_run status - `inst-dry-run-check`
 3. [x] - `p1` - Read source version from `conf.toml` - `inst-read-source-version`
 4. [x] - `p1` - **IF** not force and version matches installed: return "current" status with metadata - `inst-version-check`
-5. [x] - `p1` - **IF** config/kits/{slug}/ does not exist: first-install via `_copy_kit_content`, seed configs, register in core.toml - `inst-first-install`
-6. [x] - `p1` - **ELSE**: existing kit — delegate to `file_level_kit_update` for interactive diff - `inst-file-level-diff`
-7. [x] - `p1` - Update version in `core.toml` from source version - `inst-update-core-toml`
-8. [x] - `p1` - Collect metadata for `.gen/` aggregation - `inst-collect-metadata`
-9. [x] - `p1` - **RETURN** result with kit, version, gen, accepted/declined files - `inst-return-result`
+5. [x] - `p1` - **IF** source has `manifest.toml` and kit has no `resources` in core.toml: trigger `migrate_legacy_kit_to_manifest` - `inst-legacy-manifest-migration`
+6. [x] - `p1` - **IF** config/kits/{slug}/ does not exist: first-install via `_copy_kit_content`, seed configs, register in core.toml - `inst-first-install`
+7. [x] - `p1` - **ELSE**: existing kit — delegate to `file_level_kit_update` for interactive diff - `inst-file-level-diff`
+8. [x] - `p1` - Update version in `core.toml` from source version - `inst-update-core-toml`
+9. [x] - `p1` - Collect metadata for `.gen/` aggregation - `inst-collect-metadata`
+10. [x] - `p1` - **RETURN** result with kit, version, gen, accepted/declined files - `inst-return-result`
 
 ### File-Level Kit Update
 
@@ -341,8 +348,9 @@ Enables users to install, update, and validate kit packages with interactive fil
 **Steps**:
 1. [x] - `p1` - Get context and initialize validation state - `inst-init-context`
 2. [x] - `p1` - **Phase 1 — Structural**: for each registered Cypilot-format kit, load and validate `constraints.toml` - `inst-structural-check`
-3. [x] - `p1` - **Phase 2 — Templates**: load `artifacts_meta`, run `self_check` for template/example consistency - `inst-template-check`
-4. [x] - `p1` - Build result: aggregate errors, set overall PASS/FAIL status - `inst-build-result`
+3. [x] - `p1` - **Phase 1b — Resource paths**: for manifest-driven kits, resolve paths to constraints, templates, and examples from resource bindings in `core.toml` via `cpt-cypilot-algo-kit-manifest-resolve` instead of assuming default kit directory structure - `inst-resolve-resource-paths`
+4. [x] - `p1` - **Phase 2 — Templates**: load `artifacts_meta`, run `self_check` for template/example consistency - `inst-template-check`
+5. [x] - `p1` - Build result: aggregate errors, set overall PASS/FAIL status - `inst-build-result`
 
 ### Kit Validate by Path
 
@@ -355,9 +363,10 @@ Enables users to install, update, and validate kit packages with interactive fil
 **Steps**:
 1. [x] - `p1` - Resolve kit directory, verify exists - `inst-resolve-dir`
 2. [x] - `p1` - **Phase 1 — Structural**: load and validate `constraints.toml` - `inst-structural-check`
-3. [x] - `p1` - Build synthetic `ArtifactsMeta` from kit's artifacts/ directory - `inst-build-artifacts-meta`
-4. [x] - `p1` - **Phase 2 — Templates**: run `self_check` for template/example validation - `inst-template-check`
-5. [x] - `p1` - Build result: aggregate errors, set PASS/FAIL - `inst-build-result`
+3. [x] - `p1` - **Phase 1b — Manifest resources**: **IF** manifest-driven kit, verify all registered resource paths exist on disk - `inst-verify-resource-paths`
+4. [x] - `p1` - Build synthetic `ArtifactsMeta` from kit's artifacts/ directory - `inst-build-artifacts-meta`
+5. [x] - `p1` - **Phase 2 — Templates**: run `self_check` for template/example validation - `inst-template-check`
+6. [x] - `p1` - Build result: aggregate errors, set PASS/FAIL - `inst-build-result`
 
 ### Kit Config Helpers
 
@@ -373,6 +382,61 @@ Enables users to install, update, and validate kit packages with interactive fil
 3. [x] - `p1` - Read installed kit version from `core.toml [kits.{slug}].version` - `inst-read-version-from-core`
 4. [x] - `p1` - Read kit version string from conf.toml path - `inst-read-kit-version`
 5. [x] - `p1` - Register or update kit entry in `core.toml` with format, path, and version - `inst-register-core`
+
+### Manifest-Driven Installation
+
+- [x] `p1` - **ID**: `cpt-cypilot-algo-kit-manifest-install`
+
+**Input**: Kit source directory (containing `manifest.toml`), cypilot dir, slug, version
+
+**Output**: Result dict with status, resolved resource paths, files_copied
+
+**Steps**:
+1. [x] - `p1` - Read and validate `manifest.toml` against `kit-manifest.schema.json` - `inst-manifest-read`
+2. [x] - `p1` - Read kit root from manifest; **IF** `user_modifiable = true`: prompt user for kit root directory (offering default `{cypilot_path}/config/kits/{slug}`) - `inst-manifest-root-prompt`
+3. [x] - `p1` - **FOR EACH** resource declared in manifest - `inst-manifest-foreach-resource`
+   1. [x] - `p1` - **IF** `user_modifiable = true`: prompt user for destination path (offering `default_path` relative to kit root) - `inst-manifest-prompt-path`
+   2. [x] - `p1` - **ELSE**: use `default_path` silently - `inst-manifest-default-path`
+   3. [x] - `p1` - Copy resource from source to resolved path - `inst-manifest-copy-resource`
+4. [x] - `p1` - Resolve `{identifier}` template variables in all copied kit files - `inst-manifest-resolve-vars`
+5. [x] - `p1` - Register all resolved resource paths in `core.toml` under `[kits.{slug}.resources]` as paths relative to `{cypilot_path}`; absolute paths are never stored; `..` is used for resources outside the adapter tree - `inst-manifest-register-bindings`
+6. [x] - `p1` - Collect metadata for `.gen/` aggregation - `inst-manifest-collect-meta`
+7. [x] - `p1` - **RETURN** result with status, resource_bindings, files_copied - `inst-manifest-return`
+
+**Supporting**:
+- [x] - `p1` - Manifest dataclass definitions (`Manifest`, `ManifestResource`) and imports - `inst-manifest-datamodel`
+- [x] - `p1` - Validate parsed manifest against kit source (unique IDs, source paths exist, type matches) - `inst-manifest-validate`
+
+### Manifest Legacy Migration
+
+- [x] `p1` - **ID**: `cpt-cypilot-algo-kit-manifest-legacy-migration`
+
+**Input**: Kit source directory (containing `manifest.toml`), cypilot dir, slug, existing kit root from `core.toml`
+
+**Output**: Populated resource bindings in `core.toml`
+
+**Steps**:
+1. [x] - `p1` - Read and validate `manifest.toml` from kit source - `inst-legacy-read-manifest`
+2. [x] - `p1` - Read existing kit root path from `core.toml` - `inst-legacy-read-root`
+3. [x] - `p1` - **FOR EACH** resource declared in manifest - `inst-legacy-foreach-resource`
+   1. [x] - `p1` - Compute expected path: existing kit root + manifest `default_path` - `inst-legacy-compute-path`
+   2. [x] - `p1` - **IF** file/directory exists at computed path: register silently in `core.toml` - `inst-legacy-register-existing`
+   3. [x] - `p1` - **ELSE** (truly new resource not on disk): prompt user for destination path, copy from source, register - `inst-legacy-prompt-new`
+4. [x] - `p1` - Write all resource bindings to `core.toml` under `[kits.{slug}.resources]` - `inst-legacy-write-bindings`
+5. [x] - `p1` - **RETURN** migration result with registered paths count - `inst-legacy-return`
+
+### Manifest Resource Resolution
+
+- [x] `p1` - **ID**: `cpt-cypilot-algo-kit-manifest-resolve`
+
+**Input**: Kit slug, `core.toml` resource bindings, cypilot dir (adapter directory)
+
+**Output**: Dict of `{identifier: resolved_absolute_path}`
+
+**Steps**:
+1. [x] - `p1` - Read `[kits.{slug}.resources]` section from `core.toml` - `inst-resolve-read-bindings`
+2. [x] - `p1` - **FOR EACH** binding: resolve relative path against `{cypilot_path}` (adapter directory) to absolute path; paths may contain `..` for resources outside the adapter tree - `inst-resolve-to-absolute`
+3. [x] - `p1` - **RETURN** identifier → absolute path dict - `inst-resolve-return`
 
 ---
 
@@ -400,6 +464,8 @@ Enables users to install, update, and validate kit packages with interactive fil
 1. [x] - `p1` - `install_kit` copies all `_KIT_CONTENT_DIRS` and `_KIT_CONTENT_FILES` from source to `config/kits/{slug}/`
 2. [x] - `p1` - Kit is registered in `core.toml` with correct path and version
 3. [x] - `p1` - `.gen/` aggregates are updated after install
+4. [x] - `p1` - **IF** kit contains `manifest.toml`: all declared resources are placed at resolved paths, template variables resolved, resource bindings registered in `core.toml`
+5. [x] - `p1` - **IF** manifest with `user_modifiable` resources: user is prompted for each modifiable path
 
 ### Kit Update Shows Diffs
 
@@ -418,6 +484,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 1. [x] - `p1` - `constraints.toml` is parsed and validated per kit
 2. [x] - `p1` - Templates and examples are checked against constraints via `self_check`
 3. [x] - `p1` - Both registered and standalone (by-path) kits can be validated
+4. [x] - `p1` - For manifest-driven kits, all registered resource paths verified to exist on disk
 
 ---
 
@@ -425,7 +492,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 
 | Module | Algorithms Implemented |
 |--------|----------------------|
-| `skills/cypilot/scripts/cypilot/commands/kit.py` | `cpt-cypilot-algo-kit-content-mgmt`, `cpt-cypilot-algo-kit-regen-gen`, `cpt-cypilot-algo-kit-install`, `cpt-cypilot-algo-kit-update`, `cpt-cypilot-algo-kit-config-helpers`, `cpt-cypilot-flow-kit-install-cli`, `cpt-cypilot-flow-kit-update-cli`, `cpt-cypilot-flow-kit-dispatch` |
+| `skills/cypilot/scripts/cypilot/commands/kit.py` | `cpt-cypilot-algo-kit-content-mgmt`, `cpt-cypilot-algo-kit-regen-gen`, `cpt-cypilot-algo-kit-install`, `cpt-cypilot-algo-kit-update`, `cpt-cypilot-algo-kit-config-helpers`, `cpt-cypilot-algo-kit-manifest-install`, `cpt-cypilot-algo-kit-manifest-legacy-migration`, `cpt-cypilot-algo-kit-manifest-resolve`, `cpt-cypilot-flow-kit-install-cli`, `cpt-cypilot-flow-kit-update-cli`, `cpt-cypilot-flow-kit-dispatch` |
 | `skills/cypilot/scripts/cypilot/utils/diff_engine.py` | `cpt-cypilot-algo-kit-file-update`, `cpt-cypilot-algo-kit-file-enumerate`, `cpt-cypilot-algo-kit-file-classify`, `cpt-cypilot-algo-kit-interactive-review`, `cpt-cypilot-algo-kit-diff-display`, `cpt-cypilot-algo-kit-conflict-merge`, `cpt-cypilot-algo-kit-toc-handling`, `cpt-cypilot-algo-kit-snapshot` |
 | `skills/cypilot/scripts/cypilot/commands/validate_kits.py` | `cpt-cypilot-algo-kit-validate`, `cpt-cypilot-algo-kit-validate-by-path`, `cpt-cypilot-flow-kit-validate-cli` |
 
@@ -434,8 +501,11 @@ Enables users to install, update, and validate kit packages with interactive fil
 ## 7. Acceptance Criteria
 
 - [ ] `p1` - `cpt kit install <path>` installs a kit and returns JSON with status, files_copied
+- [ ] `p1` - `cpt kit install` with manifest: validates `manifest.toml`, prompts for `user_modifiable` paths, copies resources to resolved paths, registers bindings in `core.toml`
 - [ ] `p1` - `cpt kit update <path>` shows interactive diff and applies accepted changes
-- [ ] `p1` - `cpt validate-kits` validates all registered kits (constraints + templates)
+- [ ] `p1` - `cpt kit update` with manifest on legacy install: auto-populates resource bindings from existing kit root + manifest defaults
+- [ ] `p1` - `cpt validate-kits` validates all registered kits (constraints + templates); for manifest kits, verifies registered resource paths exist
 - [ ] `p1` - `.gen/AGENTS.md` and `.gen/SKILL.md` are regenerated after install/update
 - [ ] `p1` - File-level diff correctly handles TOC stripping, conflict merging, and editor integration
+- [ ] `p1` - `cpt info` outputs resolved resource variables for manifest-driven kits
 - [ ] `p1` - All CDSL instructions have corresponding `@cpt-begin`/`@cpt-end` markers in code

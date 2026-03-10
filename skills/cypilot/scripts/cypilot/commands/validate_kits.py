@@ -76,6 +76,27 @@ def run_validate_kits(
         kit_reports.append(rep)
     # @cpt-end:cpt-cypilot-algo-kit-validate:p1:inst-structural-check
 
+    # @cpt-begin:cpt-cypilot-algo-kit-validate:p1:inst-resolve-resource-paths
+    # ── Phase 1b: Resource path verification (manifest-driven kits) ───
+    for kit_id, loaded_kit in (ctx.kits or {}).items():
+        if kit_filter and str(kit_id) != str(kit_filter):
+            continue
+        rb = getattr(loaded_kit, "resource_bindings", None)
+        if not rb:
+            continue
+        for res_id, res_path_str in rb.items():
+            abs_path = Path(res_path_str)
+            if not abs_path.exists():
+                err = constraints_error(
+                    "resources",
+                    f"Resource '{res_id}' path not found: {res_path_str}",
+                    path=str(abs_path),
+                    line=1,
+                    kit=str(kit_id),
+                )
+                all_errors.append(err)
+    # @cpt-end:cpt-cypilot-algo-kit-validate:p1:inst-resolve-resource-paths
+
     # @cpt-begin:cpt-cypilot-algo-kit-validate:p1:inst-template-check
     # ── Phase 2: Template & example validation ────────────────────────
     # @cpt-begin:cpt-cypilot-flow-developer-experience-self-check:p1:inst-load-registry
@@ -203,6 +224,33 @@ def _validate_kit_by_path(kit_path: Path, *, verbose: bool = False) -> Tuple[int
         if verbose and _kc is not None and getattr(_kc, "by_kind", None):
             kit_report["kinds"] = sorted(_kc.by_kind.keys())
     # @cpt-end:cpt-cypilot-algo-kit-validate-by-path:p1:inst-structural-check
+
+    # @cpt-begin:cpt-cypilot-algo-kit-validate-by-path:p1:inst-verify-resource-paths
+    # ── Phase 1b: Manifest resource verification ─────────────────────
+    try:
+        from ..utils.manifest import load_manifest, validate_manifest
+        manifest = load_manifest(kit_dir)
+        if manifest is not None:
+            manifest_errs = validate_manifest(manifest, kit_dir)
+            for me in manifest_errs:
+                all_errors.append(constraints_error(
+                    "resources",
+                    me,
+                    path=(kit_dir / "manifest.toml"),
+                    line=1,
+                    kit=slug,
+                ))
+    except ValueError as exc:
+        all_errors.append(constraints_error(
+            "resources",
+            str(exc),
+            path=(kit_dir / "manifest.toml"),
+            line=1,
+            kit=slug,
+        ))
+    except Exception:
+        pass
+    # @cpt-end:cpt-cypilot-algo-kit-validate-by-path:p1:inst-verify-resource-paths
 
     # @cpt-begin:cpt-cypilot-algo-kit-validate-by-path:p1:inst-build-artifacts-meta
     # ── Phase 2: Template & example validation ────────────────────────

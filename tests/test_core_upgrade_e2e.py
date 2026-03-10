@@ -81,6 +81,8 @@ def _check_version_tags_complete() -> None:
 
 _check_version_tags_complete()
 
+_HAS_TAGS = bool(_get_all_v3_tags())
+
 
 # ---------------------------------------------------------------------------
 # Git helpers
@@ -219,6 +221,7 @@ def _init_project(root: Path, cache_dir: Path) -> Path:
 # E2E upgrade tests
 # ---------------------------------------------------------------------------
 
+@unittest.skipUnless(_HAS_TAGS, "Full git history with tags required (use fetch-depth: 0)")
 class TestCoreUpgradeE2E(unittest.TestCase):
     """Upgrade from every historical cypilot release to HEAD."""
 

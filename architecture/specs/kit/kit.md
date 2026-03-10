@@ -14,14 +14,13 @@ drivers:
 
 <!-- toc -->
 
-- [Kit Specification](#kit-specification)
-  - [Kit Overview](#kit-overview)
-  - [Kit Directory Structure](#kit-directory-structure)
-  - [Kit File Reference](#kit-file-reference)
-  - [Project-Level Outputs](#project-level-outputs)
-    - [taxonomy.md](#taxonomymd)
-  - [Kit Extension Protocol (p2)](#kit-extension-protocol-p2)
-  - [Related Specifications](#related-specifications)
+- [Kit Overview](#kit-overview)
+- [Kit Directory Structure](#kit-directory-structure)
+- [Kit File Reference](#kit-file-reference)
+- [Project-Level Outputs](#project-level-outputs)
+  - [taxonomy.md](#taxonomymd)
+- [Kit Extension Protocol (p2)](#kit-extension-protocol-p2)
+- [Related Specifications](#related-specifications)
 
 <!-- /toc -->
 
@@ -39,9 +38,10 @@ A **Kit** is a file package that provides domain-specific artifact and codebase 
 - Workflow files: `workflows/{name}.md`
 - SKILL.md — kit skill extensions for AI agent discoverability
 - Scripts: `scripts/` — kit-specific scripts and prompts
+- Optional: `manifest.toml` — declarative installation manifest (see below)
 
 **Key properties**:
-- Kit registration (slug, version, config path) is stored in `{cypilot_path}/config/core.toml`
+- Kit registration (slug, version, config path, resolved resource bindings) is stored in `{cypilot_path}/config/core.toml`; resource binding paths are always relative to `{cypilot_path}` (never absolute; `..` is used for resources outside the adapter tree)
 - All kit files are user-editable after installation
 - User modifications are preserved across kit updates via file-level diff with interactive prompts
 - Kit version is stored in `{cypilot_path}/config/kits/<slug>/conf.toml`
@@ -58,6 +58,7 @@ When a kit is installed, all files are copied to `{cypilot_path}/config/kits/{sl
 
 ```
 {cypilot_path}/config/kits/<slug>/
+├── manifest.toml                  # (optional) Declarative installation manifest
 ├── conf.toml                      # Kit version metadata (slug, version, name)
 ├── SKILL.md                       # Per-kit skill instructions (user-editable)
 ├── constraints.toml               # Kit-wide structural constraints (user-editable)
@@ -84,10 +85,13 @@ When a kit is installed, all files are copied to `{cypilot_path}/config/kits/{sl
 Top-level `.gen/` retains only aggregate files: `AGENTS.md`, `SKILL.md`, `README.md`.
 
 **Flow**:
-1. `cpt init` / `cypilot kit install` copies all kit files from source to `{cypilot_path}/config/kits/{slug}/` and registers kit in `core.toml`
+1. `cpt init` / `cypilot kit install` installs kit files from source:
+   - **If `manifest.toml` present**: validate manifest, prompt user for `user_modifiable` resource paths (offering defaults), copy each resource to its resolved path, resolve `{identifier}` template variables in kit files, register all resource bindings in `core.toml` under `[kits.{slug}.resources]`
+   - **If no `manifest.toml`**: copy all kit files from source to `{cypilot_path}/config/kits/{slug}/` (legacy behavior)
+   - Register kit in `core.toml`
 2. Regenerate `.gen/AGENTS.md` and `.gen/SKILL.md` to include the new kit's navigation and skill routing
 3. Users may freely edit any kit file at any time
-4. On kit update, the system compares new files against user's installed copies via file-level diff, then regenerates `.gen/` aggregate files
+4. On kit update, the system compares new files against user's installed copies via file-level diff (using registered resource paths for manifest-driven kits), then regenerates `.gen/` aggregate files. New resources in the updated manifest trigger a path prompt; removed resources produce a warning
 
 **Update modes**:
 
@@ -114,6 +118,7 @@ Each kit file is authored directly by kit authors and user-editable after instal
 | `workflows/{name}.md` | `workflows/` | Workflow definitions | — |
 | `SKILL.md` | kit root | Kit skill extensions | — |
 | `conf.toml` | kit root | Kit version metadata | — |
+| `manifest.toml` | kit root (optional) | Declarative installation manifest: resource identifiers, default paths, types, user-modifiability flags. Governs installation and update when present | [kit.md](#kit-overview) |
 
 ---
 

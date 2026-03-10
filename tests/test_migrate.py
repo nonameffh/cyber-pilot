@@ -547,8 +547,7 @@ class TestGenerateCoreToml(unittest.TestCase):
             core = toml_utils.load(target / "core.toml")
             self.assertEqual(core["version"], "1.0")
             self.assertEqual(core["project_root"], "..")
-            self.assertEqual(core["system"]["name"], "MyApp")
-            self.assertEqual(core["system"]["kit"], "cf-sdlc")
+            self.assertNotIn("system", core)  # ADR-0014: system lives in artifacts.toml
             self.assertIn("cf-sdlc", core["kits"])
 
     def test_no_systems_defaults(self):
@@ -559,7 +558,7 @@ class TestGenerateCoreToml(unittest.TestCase):
             result = generate_core_toml(root, [], {}, target)
             from cypilot.utils import toml_utils
             core = toml_utils.load(target / "core.toml")
-            self.assertEqual(core["system"]["kit"], "cypilot-sdlc")
+            self.assertNotIn("system", core)  # ADR-0014: system lives in artifacts.toml
             # No kits registered when slug map is empty
             self.assertNotIn("kits", core)
 
@@ -2106,18 +2105,17 @@ class TestNormalizePrReviewTypeError(unittest.TestCase):
 # ===========================================================================
 
 class TestRunMigrateConfigCoreToml(unittest.TestCase):
-    """Cover lines 1747-1754: reads kit slug from core.toml."""
+    """Cover run_migrate_config: reads kit slug from artifacts.toml (ADR-0014)."""
 
-    def test_reads_kit_from_core_toml(self):
+    def test_reads_kit_from_artifacts_toml(self):
         from cypilot.utils import toml_utils
         with TemporaryDirectory() as d:
             root = Path(d)
             config_dir = root / "config"
             config_dir.mkdir()
             toml_utils.dump({
-                "version": "1.0",
-                "system": {"name": "Test", "kit": "custom-kit"},
-            }, config_dir / "core.toml")
+                "systems": [{"name": "Test", "slug": "test", "kit": "custom-kit"}],
+            }, config_dir / "artifacts.toml")
             pr_json = {"dataDir": ".prs", "prompts": [{"promptFile": "prompts/pr/code.md"}]}
             (config_dir / "pr-review.json").write_text(json.dumps(pr_json))
             result = run_migrate_config(root)

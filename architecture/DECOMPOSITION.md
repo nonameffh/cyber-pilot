@@ -40,7 +40,7 @@ Cypilot DESIGN is decomposed into features organized around architectural layers
 
 ### 2.1 [Core Infrastructure](features/core-infra.md) ⏳ HIGH
 
-- [x] `p1` - **ID**: `cpt-cypilot-feature-core-infra`
+- [ ] `p1` - **ID**: `cpt-cypilot-feature-core-infra`
 
 - **Purpose**: Provide the foundation layer — global CLI proxy, skill engine command dispatch, config directory management, and project initialization — upon which all other features are built.
 
@@ -49,8 +49,8 @@ Cypilot DESIGN is decomposed into features organized around architectural layers
 - **Scope**:
   - Global CLI proxy with local cache (`~/.cypilot/cache/`), automatic skill bundle download from GitHub on first run, command routing, background version checks
   - Skill engine: command dispatch, JSON output serialization, exit code conventions (0/1/2)
-  - Config manager: `{cypilot_path}/config/core.toml` CRUD, schema validation, deterministic TOML serialization
-  - Project initialization: interactive bootstrapper, root system definition (name/slug from directory), per-kit config output directory selection, `{cypilot_path}/config/core.toml` creation (with kit config paths), `{cypilot_path}/config/artifacts.toml` with default autodetect rules, `{cypilot_path}/kits/` directory creation, root `AGENTS.md` injection, `{cypilot_path}/config/AGENTS.md` with default WHEN rules
+  - Config manager: `{cypilot_path}/config/core.toml` CRUD (including resource bindings for manifest-driven kits), schema validation, deterministic TOML serialization, resource path lookup API for other components
+  - Project initialization: interactive bootstrapper, root system definition (name/slug from directory) written to `artifacts.toml` `[[systems]]`, per-kit config output directory selection, `{cypilot_path}/config/core.toml` creation (with kit config paths), `{cypilot_path}/config/artifacts.toml` with default autodetect rules, `{cypilot_path}/kits/` directory creation, root `AGENTS.md` injection, `{cypilot_path}/config/AGENTS.md` with default WHEN rules
 
 - **Out of scope**:
   - Kit installation logic (Feature 2)
@@ -99,13 +99,13 @@ Cypilot DESIGN is decomposed into features organized around architectural layers
   - `cpt-cypilot-seq-init`
 
 - **Data**:
-  - `{cypilot_path}/config/core.toml` — system definitions, kit registrations, ignore lists
+  - `{cypilot_path}/config/core.toml` — kit registrations (including resource bindings for manifest-driven kits), project root, ignore lists (system identity defined in `artifacts.toml` per `cpt-cypilot-adr-remove-system-from-core-toml`)
   - `{cypilot_path}/config/artifacts.toml` — artifact registry with autodetect rules
 
 
 ### 2.2 [Kit Management](features/kit-management.md) ⏳ HIGH
 
-- [x] `p1` - **ID**: `cpt-cypilot-feature-blueprint-system`
+- [ ] `p1` - **ID**: `cpt-cypilot-feature-blueprint-system`
 
 - **Purpose**: Manage kit lifecycle — installation, file-level diff updates, interactive conflict resolution, SKILL/AGENTS composition, and kit structural validation. Kits are direct file packages (per `cpt-cypilot-adr-remove-blueprint-system`).
 
@@ -113,12 +113,14 @@ Cypilot DESIGN is decomposed into features organized around architectural layers
 
 - **Scope**:
   - Kit Manager: install kits (copy files from source into `{cypilot_path}/config/kits/{slug}/`), register in `core.toml`
-  - Update model: force mode (full overwrite) and interactive mode (file-level diff — compare each file in new version against user's installed copy, present unified diffs with accept/decline/accept-all/decline-all/modify prompts)
+  - Manifest-driven installation: if kit contains `manifest.toml`, validate against `kit-manifest.schema.json`, read declared resources, prompt user for `user_modifiable` resource paths (offering defaults), copy resources to resolved paths, resolve `{identifier}` template variables in kit files, register all resource bindings in `core.toml` under `[kits.{slug}.resources]`. Kit root directory itself is relocatable when manifest permits. Falls back to legacy copy behavior when no manifest present
+  - Legacy install migration: when updating a kit that was installed without a manifest and the new version introduces one, auto-populate all resource bindings from existing kit root + manifest `default_path` values without requiring re-installation
+  - Update model: force mode (full overwrite) and interactive mode (file-level diff — compare each file in new version against user's installed copy, present unified diffs with accept/decline/accept-all/decline-all/modify prompts). For manifest-driven kits, updates use registered resource paths, detect new resources (prompt for path), warn about removed resources
   - Resource Diff Engine: interactive conflict resolution for kit file updates (`accept-file`, `reject-file`, `accept-all`, `reject-all`, `modify` with git-style conflict markers)
-  - Kit config relocation: `cpt kit move-config <slug>` moves kit config directory, updates `core.toml`
+  - Kit config relocation: `cpt kit move-config <slug>` moves kit config directory, updates `core.toml` (including all resource paths relative to kit root)
   - SKILL composition: collect kit `SKILL.md` files and write to `{cypilot_path}/config/SKILL.md`
   - System prompt composition: collect kit AGENTS.md content and append to `{cypilot_path}/config/AGENTS.md`
-  - Kit structural validation: verify required files (`conf.toml`, `constraints.toml`, `artifacts/` directory)
+  - Kit structural validation: verify required files (`conf.toml`, `constraints.toml`, `artifacts/` directory); for manifest-driven kits, verify all registered resource paths exist on disk
 
 - **Out of scope**:
   - Custom plugin hooks and CLI subcommands (planned p2 plugin system)
@@ -127,6 +129,7 @@ Cypilot DESIGN is decomposed into features organized around architectural layers
 - **Requirements Covered**:
 
   - `p1` - `cpt-cypilot-fr-core-kits`
+  - `p1` - `cpt-cypilot-fr-core-kit-manifest`
   - `p1` - `cpt-cypilot-fr-core-resource-diff`
 
 - **Design Principles Covered**:
@@ -142,6 +145,8 @@ Cypilot DESIGN is decomposed into features organized around architectural layers
 
 - **Domain Model Entities**:
   - Kit
+  - Manifest
+  - ResourceBinding
   - Constraint
   - Workflow
 
@@ -160,17 +165,19 @@ Cypilot DESIGN is decomposed into features organized around architectural layers
 
 - **Data**:
   - `{cypilot_path}/config/kits/{slug}/conf.toml` — kit version metadata
+  - `{cypilot_path}/config/kits/{slug}/manifest.toml` — (optional) declarative installation manifest
   - `{cypilot_path}/config/kits/{slug}/SKILL.md` — per-kit skill (user-editable)
   - `{cypilot_path}/config/kits/{slug}/constraints.toml` — kit-wide structural constraints (user-editable)
   - `{cypilot_path}/config/kits/{slug}/artifacts/{KIND}/` — per-artifact files (user-editable)
   - `{cypilot_path}/config/kits/{slug}/codebase/` — codebase rules and checklist (user-editable)
   - `{cypilot_path}/config/kits/{slug}/workflows/` — generated workflow files (user-editable)
   - `{cypilot_path}/config/kits/{slug}/scripts/` — kit scripts and prompts (user-editable)
+  - `{cypilot_path}/config/core.toml` → `[kits.{slug}.resources]` — resolved resource identifier → path bindings (for manifest-driven kits)
 
 
 ### 2.3 [Traceability & Validation](features/traceability-validation.md) ⏳ HIGH
 
-- [x] `p1` - **ID**: `cpt-cypilot-feature-traceability-validation`
+- [ ] `p1` - **ID**: `cpt-cypilot-feature-traceability-validation`
 
 - **Purpose**: Provide the deterministic quality gate — ID scanning, cross-reference resolution, structural validation, and constraint enforcement — that catches issues without relying on LLMs.
 
@@ -178,7 +185,7 @@ Cypilot DESIGN is decomposed into features organized around architectural layers
 
 - **Scope**:
   - Traceability Engine: scan artifacts for ID definitions and references, scan code for `@cpt-*` tags, resolve cross-references, query commands (list-ids, list-id-kinds, where-defined, where-used, get-content), ID versioning (`-vN`)
-  - Validator: template structure compliance, ID format validation, priority markers, placeholder detection, cross-reference validation (covered_by, checked consistency), constraint enforcement from `constraints.toml`
+  - Validator: template structure compliance, ID format validation, priority markers, placeholder detection, cross-reference validation (covered_by, checked consistency), constraint enforcement from `constraints.toml`. For manifest-driven kits, resolves paths to constraints, templates, and examples from resource bindings in `core.toml` instead of assuming default kit directory structure
   - Cross-artifact validation: load all registered artifacts, compare definitions vs references per constraints rules
   - CDSL: parse instruction markers for implementation tracking
   - Single-pass scanning for ≤3s performance
@@ -297,7 +304,7 @@ Cypilot DESIGN is decomposed into features organized around architectural layers
 
 - [ ] `p2` - **ID**: `cpt-cypilot-feature-version-config`
 
-- **Purpose**: Enable project skill updates with config migration, and provide CLI commands for managing system definitions, ignore lists, and kit registrations.
+- **Purpose**: Enable project skill updates with config migration, and provide CLI commands for managing ignore lists and kit registrations.
 
 - **Depends On**: `cpt-cypilot-feature-core-infra`
 
@@ -426,7 +433,7 @@ Cypilot DESIGN is decomposed into features organized around architectural layers
   - Detect v2 installation: identify `.cypilot-adapter/` directory, `artifacts.toml`, legacy kit paths
   - Convert `artifacts.toml` → `{cypilot_path}/config/artifacts.toml`: map systems, artifacts, codebase, autodetect, ignore rules to TOML format
   - Convert legacy adapter directory → `config/` structure: migrate adapter-level specs to `config/sysprompts/`
-  - Generate `{cypilot_path}/config/core.toml` from legacy config: extract system definitions, kit registrations
+  - Generate `{cypilot_path}/config/core.toml` from legacy config: extract kit registrations (system definitions go to `artifacts.toml` per `cpt-cypilot-adr-remove-system-from-core-toml`)
   - Create `{cypilot_path}/config/AGENTS.md` from legacy adapter `AGENTS.md`: convert WHEN rules, update paths
   - Migrate kit resources: install SDLC kit from cache, copy kit files into `{cypilot_path}/config/kits/sdlc/`
   - Inject root `AGENTS.md` managed block with new `{cypilot_path}/config/AGENTS.md` path

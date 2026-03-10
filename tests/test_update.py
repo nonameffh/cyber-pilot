@@ -1056,7 +1056,6 @@ class TestDeduplicateLegacyKits(unittest.TestCase):
         with TemporaryDirectory() as td:
             config = Path(td)
             toml_utils.dump({
-                "system": {"kit": "cypilot-sdlc"},
                 "kits": {
                     "cypilot-sdlc": {"path": "config/kits/sdlc", "format": "Cypilot"},
                     "sdlc": {"path": "config/kits/sdlc", "format": "Cypilot"},
@@ -1068,7 +1067,6 @@ class TestDeduplicateLegacyKits(unittest.TestCase):
                 data = tomllib.load(f)
             self.assertNotIn("cypilot-sdlc", data["kits"])
             self.assertIn("sdlc", data["kits"])
-            self.assertEqual(data["system"]["kit"], "sdlc")
 
     def test_dedup_different_paths_skipped(self):
         from cypilot.commands.update import _deduplicate_legacy_kits
@@ -1344,6 +1342,481 @@ class TestCmdUpdateLayoutMigration(unittest.TestCase):
                         rc = cmd_update([])
                 # May warn but shouldn't crash
                 self.assertIn(rc, [0, 1])
+            finally:
+                os.chdir(cwd)
+
+
+# ---------------------------------------------------------------------------
+# _remove_system_from_core_toml (ADR-0014)
+# ---------------------------------------------------------------------------
+
+class TestRemoveSystemFromCoreToml(unittest.TestCase):
+    """Tests for the [system] removal migration step."""
+
+    def test_removes_system_section(self):
+        from cypilot.commands.update import _remove_system_from_core_toml
+        with TemporaryDirectory() as td:
+            config_dir = Path(td)
+            _write_toml(config_dir / "core.toml", {
+                "version": "1.0",
+                "project_root": "..",
+                "system": {"name": "Test", "slug": "test", "kit": "sdlc"},
+                "kits": {"sdlc": {"format": "Cypilot", "path": "config/kits/sdlc"}},
+            })
+            result = _remove_system_from_core_toml(config_dir)
+            self.assertTrue(result)
+
+            from cypilot.utils import toml_utils
+            core = toml_utils.load(config_dir / "core.toml")
+            self.assertNotIn("system", core)
+            self.assertEqual(core["version"], "1.0")
+            self.assertIn("sdlc", core["kits"])
+
+    def test_no_system_section_is_noop(self):
+        from cypilot.commands.update import _remove_system_from_core_toml
+        with TemporaryDirectory() as td:
+            config_dir = Path(td)
+            _write_toml(config_dir / "core.toml", {
+                "version": "1.0",
+                "project_root": "..",
+                "kits": {},
+            })
+            result = _remove_system_from_core_toml(config_dir)
+            self.assertFalse(result)
+
+    def test_missing_core_toml(self):
+        from cypilot.commands.update import _remove_system_from_core_toml
+        result = _remove_system_from_core_toml(Path("/nonexistent"))
+        self.assertFalse(result)
+
+    def test_corrupt_core_toml(self):
+        from cypilot.commands.update import _remove_system_from_core_toml
+        with TemporaryDirectory() as td:
+            config_dir = Path(td)
+            (config_dir / "core.toml").write_text("{{invalid", encoding="utf-8")
+            result = _remove_system_from_core_toml(config_dir)
+            self.assertFalse(result)
+
+
+# ---------------------------------------------------------------------------
+# _default_core_toml (ADR-0014)
+# ---------------------------------------------------------------------------
+
+class TestDefaultCoreToml(unittest.TestCase):
+    """Verify _default_core_toml no longer includes [system]."""
+
+    def test_no_system_section(self):
+        from cypilot.commands.init import _default_core_toml
+        core = _default_core_toml()
+        self.assertNotIn("system", core)
+        self.assertEqual(core["version"], "1.0")
+        self.assertEqual(core["project_root"], "..")
+        self.assertIn("sdlc", core["kits"])
+
+
+# ---------------------------------------------------------------------------
+# WP7: _maybe_migrate_legacy_to_manifest (update pipeline integration)
+# ---------------------------------------------------------------------------
+
+def _make_kit_source_with_manifest(td: Path, slug: str = "testkit") -> Path:
+    """Create a kit source with manifest.toml and source files for WP7 tests."""
+    kit = td / slug
+    kit.mkdir(parents=True, exist_ok=True)
+
+    (kit / "artifacts" / "ADR").mkdir(parents=True)
+    (kit / "artifacts" / "ADR" / "template.md").write_text("# ADR\n", encoding="utf-8")
+    (kit / "artifacts" / "ADR" / "rules.md").write_text("# Rules\n", encoding="utf-8")
+    (kit / "constraints.toml").write_text('[artifacts]\n', encoding="utf-8")
+    (kit / "SKILL.md").write_text(f"# Kit {slug}\n", encoding="utf-8")
+
+    _write_toml(kit / "conf.toml", {"version": "2.0", "slug": slug})
+
+    import textwrap
+    (kit / "manifest.toml").write_text(textwrap.dedent("""\
+        [manifest]
+        version = "1.0"
+        root = "{cypilot_path}/config/kits/{slug}"
+        user_modifiable = false
+
+        [[resources]]
+        id = "adr_artifacts"
+        description = "ADR artifact definitions"
+        source = "artifacts/ADR"
+        default_path = "artifacts/ADR"
+        type = "directory"
+        user_modifiable = false
+
+        [[resources]]
+        id = "constraints"
+        description = "Kit structural constraints"
+        source = "constraints.toml"
+        default_path = "constraints.toml"
+        type = "file"
+        user_modifiable = false
+
+        [[resources]]
+        id = "skill"
+        description = "Kit skill instructions"
+        source = "SKILL.md"
+        default_path = "SKILL.md"
+        type = "file"
+        user_modifiable = false
+    """), encoding="utf-8")
+    return kit
+
+
+def _setup_legacy_adapter(td: Path, slug: str = "testkit") -> Path:
+    """Set up an adapter with a legacy kit install (no resources in core.toml)."""
+    adapter = td / "adapter"
+    config = adapter / "config"
+    config_kit = config / "kits" / slug
+    config_kit.mkdir(parents=True)
+
+    (config_kit / "artifacts" / "ADR").mkdir(parents=True)
+    (config_kit / "artifacts" / "ADR" / "template.md").write_text("# ADR\n", encoding="utf-8")
+    (config_kit / "artifacts" / "ADR" / "rules.md").write_text("# Rules\n", encoding="utf-8")
+    (config_kit / "constraints.toml").write_text('[artifacts]\n', encoding="utf-8")
+    (config_kit / "SKILL.md").write_text(f"# Kit {slug}\n", encoding="utf-8")
+
+    _write_toml(config / "core.toml", {
+        "version": "1.0",
+        "project_root": "..",
+        "kits": {
+            slug: {
+                "format": "Cypilot",
+                "path": f"config/kits/{slug}",
+                "version": "2.0",
+            }
+        },
+    })
+    return adapter
+
+
+class TestMaybeMigrateLegacyToManifest(unittest.TestCase):
+    """Unit tests for _maybe_migrate_legacy_to_manifest() helper (WP7)."""
+
+    def test_no_manifest_returns_none(self):
+        """Kit source without manifest.toml → returns None (no migration)."""
+        from cypilot.commands.update import _maybe_migrate_legacy_to_manifest
+        with TemporaryDirectory() as td:
+            td_path = Path(td)
+            kit_src = td_path / "nokit"
+            kit_src.mkdir()
+            adapter = _setup_legacy_adapter(td_path, "nokit")
+            config_dir = adapter / "config"
+
+            result = _maybe_migrate_legacy_to_manifest(
+                "nokit", kit_src, adapter, config_dir, interactive=False,
+            )
+            self.assertIsNone(result)
+
+    def test_already_has_resources_returns_none(self):
+        """Kit with existing resources in core.toml → returns None (skip)."""
+        from cypilot.commands.update import _maybe_migrate_legacy_to_manifest
+        import tomllib
+        with TemporaryDirectory() as td:
+            td_path = Path(td)
+            kit_src = _make_kit_source_with_manifest(td_path, "mykit")
+            adapter = _setup_legacy_adapter(td_path, "mykit")
+            config_dir = adapter / "config"
+
+            # Pre-populate resources in core.toml
+            with open(config_dir / "core.toml", "rb") as f:
+                data = tomllib.load(f)
+            data["kits"]["mykit"]["resources"] = {
+                "adr_artifacts": {"path": "config/kits/mykit/artifacts/ADR"},
+            }
+            _write_toml(config_dir / "core.toml", data)
+
+            result = _maybe_migrate_legacy_to_manifest(
+                "mykit", kit_src, adapter, config_dir, interactive=False,
+            )
+            self.assertIsNone(result)
+
+    def test_triggers_migration_when_needed(self):
+        """Source has manifest + no resources → triggers migration, returns result."""
+        from cypilot.commands.update import _maybe_migrate_legacy_to_manifest
+        import tomllib
+        with TemporaryDirectory() as td:
+            td_path = Path(td)
+            kit_src = _make_kit_source_with_manifest(td_path, "mykit")
+            adapter = _setup_legacy_adapter(td_path, "mykit")
+            config_dir = adapter / "config"
+
+            result = _maybe_migrate_legacy_to_manifest(
+                "mykit", kit_src, adapter, config_dir, interactive=False,
+            )
+
+            self.assertIsNotNone(result)
+            self.assertEqual(result["status"], "PASS")
+            self.assertEqual(result["migrated_count"], 3)
+            self.assertEqual(result["new_count"], 0)
+
+            # Verify resources written to core.toml
+            with open(config_dir / "core.toml", "rb") as f:
+                data = tomllib.load(f)
+            self.assertIn("resources", data["kits"]["mykit"])
+
+    def test_invalid_manifest_returns_none(self):
+        """Invalid manifest.toml in kit source → returns None (error handled)."""
+        from cypilot.commands.update import _maybe_migrate_legacy_to_manifest
+        with TemporaryDirectory() as td:
+            td_path = Path(td)
+            kit_src = td_path / "badkit"
+            kit_src.mkdir()
+            # Write an invalid manifest (missing required fields)
+            (kit_src / "manifest.toml").write_text("[manifest]\n", encoding="utf-8")
+            adapter = _setup_legacy_adapter(td_path, "badkit")
+            config_dir = adapter / "config"
+
+            result = _maybe_migrate_legacy_to_manifest(
+                "badkit", kit_src, adapter, config_dir, interactive=False,
+            )
+            # ValueError from load_manifest is caught → returns None
+            self.assertIsNone(result)
+
+    def test_corrupt_manifest_returns_none(self):
+        """Corrupt manifest.toml → returns None (exception caught)."""
+        from cypilot.commands.update import _maybe_migrate_legacy_to_manifest
+        with TemporaryDirectory() as td:
+            td_path = Path(td)
+            kit_src = td_path / "corrupt"
+            kit_src.mkdir()
+            (kit_src / "manifest.toml").write_text("{{invalid", encoding="utf-8")
+            adapter = _setup_legacy_adapter(td_path, "corrupt")
+            config_dir = adapter / "config"
+
+            result = _maybe_migrate_legacy_to_manifest(
+                "corrupt", kit_src, adapter, config_dir, interactive=False,
+            )
+            self.assertIsNone(result)
+
+
+class TestCmdUpdateManifestMigration(unittest.TestCase):
+    """Pipeline integration tests for WP7 manifest migration in cmd_update."""
+
+    def setUp(self):
+        from cypilot.utils.ui import set_json_mode
+        set_json_mode(True)
+
+    def tearDown(self):
+        from cypilot.utils.ui import set_json_mode
+        set_json_mode(False)
+
+    def test_update_triggers_manifest_migration_version_match(self):
+        """When kit versions match but no resources, migration still triggers.
+
+        Manually sets up a project where:
+        - Cache kit has manifest.toml + matching version
+        - Installed kit has same version in core.toml but NO resources
+        - update_kit returns early ("current") but WP7 catch-all triggers migration
+        """
+        from cypilot.commands.update import cmd_update
+        import tomllib, textwrap
+
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            root.mkdir()
+            (root / ".git").mkdir()
+
+            # Set up adapter directory manually
+            adapter = root / "cypilot"
+            config = adapter / "config"
+            config_kit = config / "kits" / "sdlc"
+            config_kit.mkdir(parents=True)
+            (adapter / ".core").mkdir(parents=True)
+            (adapter / ".gen").mkdir(parents=True)
+
+            # Create installed kit files
+            (config_kit / "constraints.toml").write_text('[artifacts]\n', encoding="utf-8")
+            (config_kit / "SKILL.md").write_text("# Kit sdlc\n", encoding="utf-8")
+            _write_toml(config_kit / "conf.toml", {"version": "2.0"})
+
+            # core.toml: version matches cache, NO resources
+            _write_toml(config / "core.toml", {
+                "version": "1.0",
+                "project_root": "..",
+                "kits": {
+                    "sdlc": {
+                        "format": "Cypilot",
+                        "path": "config/kits/sdlc",
+                        "version": "2.0",
+                    },
+                },
+            })
+
+            # AGENTS.md with cypilot_path
+            (root / "AGENTS.md").write_text(
+                '<!-- @cpt:root-agents -->\n```toml\ncypilot_path = "cypilot"\n```\n<!-- /@cpt:root-agents -->\n',
+                encoding="utf-8",
+            )
+
+            # Create cache with matching version + manifest.toml
+            cache = Path(td) / "cache"
+            _make_cache(cache, kit_version="2.0")
+            kit_src = cache / "kits" / "sdlc"
+            (kit_src / "constraints.toml").write_text('[artifacts]\n', encoding="utf-8")
+            (kit_src / "SKILL.md").write_text("# Kit sdlc\n", encoding="utf-8")
+            (kit_src / "manifest.toml").write_text(textwrap.dedent("""\
+                [manifest]
+                version = "1.0"
+                root = "{cypilot_path}/config/kits/{slug}"
+                user_modifiable = false
+
+                [[resources]]
+                id = "constraints"
+                description = "Kit constraints"
+                source = "constraints.toml"
+                default_path = "constraints.toml"
+                type = "file"
+                user_modifiable = false
+
+                [[resources]]
+                id = "skill"
+                description = "Kit skill"
+                source = "SKILL.md"
+                default_path = "SKILL.md"
+                type = "file"
+                user_modifiable = false
+            """), encoding="utf-8")
+
+            cwd = os.getcwd()
+            try:
+                os.chdir(str(root))
+                with patch("cypilot.commands.update.CACHE_DIR", cache):
+                    buf = io.StringIO()
+                    err = io.StringIO()
+                    with redirect_stdout(buf), redirect_stderr(err):
+                        rc = cmd_update([])
+                self.assertEqual(rc, 0)
+
+                # Verify resources were populated in core.toml
+                core_toml = config / "core.toml"
+                with open(core_toml, "rb") as f:
+                    data = tomllib.load(f)
+                sdlc_entry = data["kits"]["sdlc"]
+                self.assertIn("resources", sdlc_entry)
+                self.assertIn("constraints", sdlc_entry["resources"])
+                self.assertIn("skill", sdlc_entry["resources"])
+
+                # Check manifest_migration in output
+                out = json.loads(buf.getvalue())
+                kits = out.get("actions", {}).get("kits", {})
+                sdlc_r = kits.get("sdlc", {})
+                mig = sdlc_r.get("manifest_migration")
+                self.assertIsNotNone(mig)
+                self.assertEqual(mig["status"], "PASS")
+            finally:
+                os.chdir(cwd)
+
+    def test_update_skips_migration_when_resources_exist(self):
+        """When kit already has resources in core.toml, migration is skipped."""
+        from cypilot.commands.update import cmd_update
+        import tomllib
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            root.mkdir()
+            cache = Path(td) / "cache"
+            _make_cache(cache)
+
+            # Add manifest to cache kit
+            kit_src = cache / "kits" / "sdlc"
+            import textwrap
+            (kit_src / "manifest.toml").write_text(textwrap.dedent("""\
+                [manifest]
+                version = "1.0"
+                root = "{cypilot_path}/config/kits/{slug}"
+                user_modifiable = false
+
+                [[resources]]
+                id = "prd_artifacts"
+                source = "artifacts/PRD"
+                default_path = "artifacts/PRD"
+                type = "directory"
+                user_modifiable = false
+            """), encoding="utf-8")
+
+            adapter = _init_project(root, cache)
+
+            # Pre-populate resources in core.toml
+            core_toml = adapter / "config" / "core.toml"
+            with open(core_toml, "rb") as f:
+                data = tomllib.load(f)
+            data["kits"]["sdlc"]["resources"] = {
+                "prd_artifacts": {"path": "config/kits/sdlc/artifacts/PRD"},
+            }
+            _write_toml(core_toml, data)
+
+            cwd = os.getcwd()
+            try:
+                os.chdir(str(root))
+                with patch("cypilot.commands.update.CACHE_DIR", cache):
+                    buf = io.StringIO()
+                    err = io.StringIO()
+                    with redirect_stdout(buf), redirect_stderr(err):
+                        rc = cmd_update([])
+                self.assertEqual(rc, 0)
+
+                out = json.loads(buf.getvalue())
+                kits = out.get("actions", {}).get("kits", {})
+                sdlc_r = kits.get("sdlc", {})
+                # No manifest_migration key — migration was skipped
+                self.assertNotIn("manifest_migration", sdlc_r)
+            finally:
+                os.chdir(cwd)
+
+    def test_dry_run_skips_migration(self):
+        """--dry-run does not trigger manifest migration."""
+        from cypilot.commands.update import cmd_update
+        import tomllib
+        with TemporaryDirectory() as td:
+            root = Path(td) / "proj"
+            root.mkdir()
+            cache = Path(td) / "cache"
+            _make_cache(cache)
+
+            # Init WITHOUT manifest — so init doesn't trigger migration
+            adapter = _init_project(root, cache)
+
+            # Now add manifest.toml to cache kit AFTER init
+            kit_src = cache / "kits" / "sdlc"
+            import textwrap
+            (kit_src / "manifest.toml").write_text(textwrap.dedent("""\
+                [manifest]
+                version = "1.0"
+                root = "{cypilot_path}/config/kits/{slug}"
+                user_modifiable = false
+
+                [[resources]]
+                id = "prd_artifacts"
+                source = "artifacts/PRD"
+                default_path = "artifacts/PRD"
+                type = "directory"
+                user_modifiable = false
+            """), encoding="utf-8")
+
+            # Ensure no resources in core.toml before dry-run
+            core_toml = adapter / "config" / "core.toml"
+            with open(core_toml, "rb") as f:
+                data = tomllib.load(f)
+            data["kits"]["sdlc"].pop("resources", None)
+            _write_toml(core_toml, data)
+
+            cwd = os.getcwd()
+            try:
+                os.chdir(str(root))
+                with patch("cypilot.commands.update.CACHE_DIR", cache):
+                    buf = io.StringIO()
+                    err = io.StringIO()
+                    with redirect_stdout(buf), redirect_stderr(err):
+                        rc = cmd_update(["--dry-run"])
+                self.assertEqual(rc, 0)
+
+                # No resources should be populated (dry-run)
+                with open(core_toml, "rb") as f:
+                    data = tomllib.load(f)
+                sdlc_entry = data["kits"]["sdlc"]
+                self.assertNotIn("resources", sdlc_entry)
             finally:
                 os.chdir(cwd)
 

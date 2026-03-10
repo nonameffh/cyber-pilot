@@ -6,7 +6,7 @@ project_root = ".."
 [system]
 name = "Cypilot"
 slug = "cypilot"
-kit = "cypilot-sdlc"
+kit = "sdlc"
 
 [kits]
 [kits.sdlc]
