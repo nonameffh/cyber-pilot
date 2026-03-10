@@ -1093,11 +1093,13 @@ def generate_slug(name: str) -> str:
 
 def generate_default_registry(
     project_name: str,
+    kit_slug: str = "sdlc",
 ) -> dict:
     """Generate default artifacts.toml registry for a new project.
 
     Args:
         project_name: Name of the project (used as system name)
+        kit_slug: Slug of the kit to assign to the root system
 
     Returns:
         Dictionary with the default registry structure.
@@ -1108,7 +1110,7 @@ def generate_default_registry(
             {
                 "name": project_name,
                 "slug": generate_slug(project_name),
-                "kit": "cypilot-sdlc",
+                "kit": kit_slug,
                 "artifacts": [],
                 "codebase": [],
                 "children": [],

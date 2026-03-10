@@ -1093,7 +1093,7 @@ class TestWriteGenAgents(unittest.TestCase):
             self.assertTrue(agents.is_file())
             content = agents.read_text()
             self.assertIn("my-project", content)
-            self.assertIn("cypilot-sdlc", content)
+            self.assertIn("artifacts.toml", content)
 
 
 # ===========================================================================

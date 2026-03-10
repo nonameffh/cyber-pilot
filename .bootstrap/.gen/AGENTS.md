@@ -2,11 +2,11 @@
 
 ## Navigation Rules
 
+ALWAYS open and follow `{cypilot_path}/config/artifacts.toml` WHEN working with artifacts or codebase
+
 ALWAYS open and follow `{cypilot_path}/.core/schemas/artifacts.schema.json` WHEN working with artifacts.toml
 
 ALWAYS open and follow `{cypilot_path}/.core/architecture/specs/artifacts-registry.md` WHEN working with artifacts.toml
-
-ALWAYS open and follow `{cypilot_path}/config/artifacts.toml` WHEN Cypilot uses kit `cypilot-sdlc` for artifact kinds: PRD, DESIGN, DECOMPOSITION, ADR, FEATURE OR codebase
 
 # Cypilot Kit: SDLC (`cypilot-sdlc`)
 
@@ -14,15 +14,15 @@ Agent quick reference.
 
 ## What it is
 
-Artifact-first SDLC pipeline (PRD → ADR + DESIGN → DECOMPOSITION → FEATURE → CODE) with templates, checklists, examples, and `{cypilot_path}/config/kits/sdlc/artifacts/{KIND}/rules.md` for deterministic validation + traceability.
+Artifact-first SDLC pipeline (PRD → ADR + DESIGN → DECOMPOSITION → FEATURE → CODE) with templates, checklists, examples, and per-artifact `rules.md` for deterministic validation + traceability.
 
 ## Artifact kinds
 
 | Kind | Semantic intent (when to use) | References |
 | --- | --- | --- |
-| PRD | Product intent: actors + problems + FR/NFR + use cases + success criteria. | `{cypilot_path}/config/kits/sdlc/artifacts/PRD/rules.md`, `{cypilot_path}/config/kits/sdlc/artifacts/PRD/template.md`, `{cypilot_path}/config/kits/sdlc/artifacts/PRD/checklist.md`, `{cypilot_path}/config/kits/sdlc/artifacts/PRD/examples/example.md` |
-| ADR | Decision log: why an architecture choice was made (context/options/decision/consequences). | `{cypilot_path}/config/kits/sdlc/artifacts/ADR/rules.md`, `{cypilot_path}/config/kits/sdlc/artifacts/ADR/template.md`, `{cypilot_path}/config/kits/sdlc/artifacts/ADR/checklist.md`, `{cypilot_path}/config/kits/sdlc/artifacts/ADR/examples/example.md` |
-| DESIGN | System design: architecture, components, boundaries, interfaces, drivers, principles/constraints. | `{cypilot_path}/config/kits/sdlc/artifacts/DESIGN/rules.md`, `{cypilot_path}/config/kits/sdlc/artifacts/DESIGN/template.md`, `{cypilot_path}/config/kits/sdlc/artifacts/DESIGN/checklist.md`, `{cypilot_path}/config/kits/sdlc/artifacts/DESIGN/examples/example.md` |
-| DECOMPOSITION | Executable plan: FEATURE list, ordering, dependencies, and coverage links back to PRD/DESIGN. | `{cypilot_path}/config/kits/sdlc/artifacts/DECOMPOSITION/rules.md`, `{cypilot_path}/config/kits/sdlc/artifacts/DECOMPOSITION/template.md`, `{cypilot_path}/config/kits/sdlc/artifacts/DECOMPOSITION/checklist.md`, `{cypilot_path}/config/kits/sdlc/artifacts/DECOMPOSITION/examples/example.md` |
-| FEATURE | Precise behavior + DoD: CDSL flows/algos/states + test scenarios for implementability. | `{cypilot_path}/config/kits/sdlc/artifacts/FEATURE/rules.md`, `{cypilot_path}/config/kits/sdlc/artifacts/FEATURE/template.md`, `{cypilot_path}/config/kits/sdlc/artifacts/FEATURE/checklist.md`, `{cypilot_path}/config/kits/sdlc/artifacts/FEATURE/examples/task-crud.md` |
-| CODE | Implementation of FEATURE with optional `@cpt-*` markers and checkbox cascade/coverage validation. | `{cypilot_path}/config/kits/sdlc/codebase/rules.md`, `{cypilot_path}/config/kits/sdlc/codebase/checklist.md` |
+| PRD | Product intent: actors + problems + FR/NFR + use cases + success criteria. | `{prd_rules}`, `{prd_template}`, `{prd_checklist}`, `{prd_example}` |
+| ADR | Decision log: why an architecture choice was made (context/options/decision/consequences). | `{adr_rules}`, `{adr_template}`, `{adr_checklist}`, `{adr_example}` |
+| DESIGN | System design: architecture, components, boundaries, interfaces, drivers, principles/constraints. | `{design_rules}`, `{design_template}`, `{design_checklist}`, `{design_example}` |
+| DECOMPOSITION | Executable plan: FEATURE list, ordering, dependencies, and coverage links back to PRD/DESIGN. | `{decomposition_rules}`, `{decomposition_template}`, `{decomposition_checklist}`, `{decomposition_example}` |
+| FEATURE | Precise behavior + DoD: CDSL flows/algos/states + test scenarios for implementability. | `{feature_rules}`, `{feature_template}`, `{feature_checklist}`, `{feature_example}` |
+| CODE | Implementation of FEATURE with optional `@cpt-*` markers and checkbox cascade/coverage validation. | `{codebase_rules}`, `{codebase_checklist}` |

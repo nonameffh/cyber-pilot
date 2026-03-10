@@ -492,7 +492,7 @@ class TestGenerateDefaultRegistry(unittest.TestCase):
         result = generate_default_registry("MyProject")
         self.assertEqual(len(result["systems"]), 1)
         self.assertEqual(result["systems"][0]["name"], "MyProject")
-        self.assertEqual(result["systems"][0]["kit"], "cypilot-sdlc")
+        self.assertEqual(result["systems"][0]["kit"], "sdlc")
 
     def test_generate_default_registry_minimal(self):
         """Smoke test: generate_default_registry with minimal input."""

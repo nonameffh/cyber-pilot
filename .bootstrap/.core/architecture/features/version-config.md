@@ -35,7 +35,7 @@
 
 ### 1. Overview
 
-Enables project skill updates with config migration, and provides CLI commands for managing system definitions, ignore lists, and kit registrations. The update command refreshes `.core/` from cache, detects and auto-restructures old directory layouts, migrates bundled kit references to GitHub sources (versions < 3.0.8), and ensures `config/` scaffold files exist without overwriting user content. Kit file updates are a separate operation via `cpt kit update`.
+Enables project skill updates with config migration, and provides CLI commands for managing ignore lists and kit registrations. System definitions are managed in `artifacts.toml` (per `cpt-cypilot-adr-remove-system-from-core-toml`). The update command refreshes `.core/` from cache, detects and auto-restructures old directory layouts, migrates bundled kit references to GitHub sources (versions < 3.0.8), and ensures `config/` scaffold files exist without overwriting user content. Kit file updates are a separate operation via `cpt kit update`.
 
 ### 2. Purpose
 
@@ -58,7 +58,7 @@ Ensures teams can upgrade Cypilot without losing configuration or customizations
 
 ### Update Project Installation
 
-- [x] `p1` - **ID**: `cpt-cypilot-flow-version-config-update`
+- [ ] `p1` - **ID**: `cpt-cypilot-flow-version-config-update`
 
 **Actor**: `cpt-cypilot-actor-user`
 
@@ -76,9 +76,11 @@ Ensures teams can upgrade Cypilot without losing configuration or customizations
 3. [x] - `p1` - Replace `.core/` from cache (always force-overwrite) - `inst-replace-core`
 4. [x] - `p1` - Detect directory layout; if old layout detected, trigger automatic restructuring using `cpt-cypilot-algo-version-config-layout-restructure` - `inst-detect-layout`
 5. [x] - `p1` - Migrate `{cypilot_path}/config/core.toml` preserving all user settings - `inst-migrate-config`
-6. [x] - `p1` - Migrate bundled kit references to GitHub sources (add `source` field for kits without one) - `inst-migrate-kit-sources`
-7. [x] - `p1` - Ensure config scaffold files exist (create only if missing) - `inst-ensure-scaffold`
-8. [x] - `p1` - Regenerate agent entry points - `inst-regenerate-agents`
+6. [ ] - `p1` - **IF** `core.toml` contains `[system]` section, remove it (system identity is defined in `artifacts.toml` per `cpt-cypilot-adr-remove-system-from-core-toml`); log removal in update report - `inst-remove-system-section`
+7. [x] - `p1` - Migrate bundled kit references to GitHub sources (add `source` field for kits without one) - `inst-migrate-kit-sources`
+7. [ ] - `p1` - **FOR EACH** registered kit: **IF** kit source contains `manifest.toml` and `core.toml` has no `[kits.{slug}.resources]` section, trigger legacy manifest migration via `cpt-cypilot-algo-kit-manifest-legacy-migration` (Feature 2 boundary) - `inst-manifest-legacy-migration`
+8. [x] - `p1` - Ensure config scaffold files exist (create only if missing) - `inst-ensure-scaffold`
+9. [x] - `p1` - Regenerate agent entry points - `inst-regenerate-agents`
 9. [x] - `p1` - Run self-check to verify kit integrity (`run_self_check_from_meta`); include result in report, WARN if failed - `inst-self-check`
 10. [x] - `p1` - **RETURN** update report with actions taken and self-check result - `inst-return-report`
 11. [x] - `p1` - Imports, constants, and module setup for update command - `inst-update-imports`
@@ -94,7 +96,7 @@ Ensures teams can upgrade Cypilot without losing configuration or customizations
 
 **Success Scenarios**:
 - User runs `cpt config show` → displays current core.toml contents
-- User runs `cpt config system add` → adds system definition with schema validation
+- User runs `cpt config system add` → adds system definition to `artifacts.toml` with schema validation
 
 **Steps**:
 1. [ ] - `p2` - User invokes `cpt config <subcommand> [args]` - `inst-user-config`
@@ -111,9 +113,12 @@ Ensures teams can upgrade Cypilot without losing configuration or customizations
 1. [x] - `p1` - Replace `.core/` from cache - `inst-replace-core-algo`
 2. [x] - `p1` - Detect and auto-restructure old directory layout - `inst-detect-layout-algo`
 3. [x] - `p1` - Migrate `{cypilot_path}/config/core.toml` - `inst-migrate-config-algo`
-4. [x] - `p1` - Migrate bundled kit references to GitHub sources (add `source` field) - `inst-migrate-kit-sources-algo`
-5. [x] - `p1` - (Removed — no separate regen step; kit files are updated directly) - `inst-regen-algo`
-6. [x] - `p1` - Ensure config scaffold - `inst-scaffold-algo`
+4. [x] - `p1` - Remove `[system]` section from `core.toml` if present (per `cpt-cypilot-adr-remove-system-from-core-toml`) - `inst-remove-system-section-algo`
+5. [x] - `p1` - Migrate bundled kit references to GitHub sources (add `source` field) - `inst-migrate-kit-sources-algo`
+6. [x] - `p1` - Trigger legacy manifest migration for kits updated to manifest-driven versions without existing resource bindings - `inst-manifest-legacy-migration-algo`
+7. [x] - `p1` - Helper: check manifest presence and resource binding state before triggering migration - `inst-manifest-legacy-migration-helper`
+8. [x] - `p1` - (Removed — no separate regen step; kit files are updated directly) - `inst-regen-algo`
+9. [x] - `p1` - Ensure config scaffold - `inst-scaffold-algo`
 
 ### Layout Restructuring
 
@@ -182,7 +187,7 @@ Ensures teams can upgrade Cypilot without losing configuration or customizations
 - [ ] `p2` - **ID**: `cpt-cypilot-dod-version-config-cli`
 
 - [ ] - `p2` - `cpt config show` displays current configuration
-- [ ] - `p2` - `cpt config system add/remove` manages system definitions
+- [ ] - `p2` - `cpt config system add/remove` manages system definitions in `artifacts.toml`
 - [ ] - `p2` - Schema validation rejects invalid changes before writing
 
 ### Config Migration

@@ -1683,7 +1683,13 @@ class TestCmdUpdateManifestMigration(unittest.TestCase):
             cwd = os.getcwd()
             try:
                 os.chdir(str(root))
-                with patch("cypilot.commands.update.CACHE_DIR", cache):
+                with (
+                    patch("cypilot.commands.update.CACHE_DIR", cache),
+                    patch(
+                        "cypilot.commands.kit._download_kit_from_github",
+                        return_value=(kit_src, "2.0"),
+                    ),
+                ):
                     buf = io.StringIO()
                     err = io.StringIO()
                     with redirect_stdout(buf), redirect_stderr(err):
@@ -1712,16 +1718,48 @@ class TestCmdUpdateManifestMigration(unittest.TestCase):
     def test_update_skips_migration_when_resources_exist(self):
         """When kit already has resources in core.toml, migration is skipped."""
         from cypilot.commands.update import cmd_update
-        import tomllib
+        import tomllib, textwrap
+
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             root.mkdir()
-            cache = Path(td) / "cache"
-            _make_cache(cache)
+            (root / ".git").mkdir()
 
-            # Add manifest to cache kit
+            adapter = root / "cypilot"
+            config = adapter / "config"
+            config_kit = config / "kits" / "sdlc"
+            config_kit.mkdir(parents=True)
+            (adapter / ".core").mkdir(parents=True)
+            (adapter / ".gen").mkdir(parents=True)
+
+            (config_kit / "constraints.toml").write_text('[artifacts]\n', encoding="utf-8")
+            (config_kit / "SKILL.md").write_text("# Kit sdlc\n", encoding="utf-8")
+            _write_toml(config_kit / "conf.toml", {"version": "2.0"})
+
+            # core.toml WITH resources already populated
+            _write_toml(config / "core.toml", {
+                "version": "1.0",
+                "project_root": "..",
+                "kits": {
+                    "sdlc": {
+                        "format": "Cypilot",
+                        "path": "config/kits/sdlc",
+                        "version": "2.0",
+                        "resources": {
+                            "constraints": {"path": "config/kits/sdlc/constraints.toml"},
+                        },
+                    },
+                },
+            })
+
+            (root / "AGENTS.md").write_text(
+                '<!-- @cpt:root-agents -->\n```toml\ncypilot_path = "cypilot"\n```\n<!-- /@cpt:root-agents -->\n',
+                encoding="utf-8",
+            )
+
+            cache = Path(td) / "cache"
+            _make_cache(cache, kit_version="2.0")
             kit_src = cache / "kits" / "sdlc"
-            import textwrap
             (kit_src / "manifest.toml").write_text(textwrap.dedent("""\
                 [manifest]
                 version = "1.0"
@@ -1729,28 +1767,23 @@ class TestCmdUpdateManifestMigration(unittest.TestCase):
                 user_modifiable = false
 
                 [[resources]]
-                id = "prd_artifacts"
-                source = "artifacts/PRD"
-                default_path = "artifacts/PRD"
-                type = "directory"
+                id = "constraints"
+                source = "constraints.toml"
+                default_path = "constraints.toml"
+                type = "file"
                 user_modifiable = false
             """), encoding="utf-8")
-
-            adapter = _init_project(root, cache)
-
-            # Pre-populate resources in core.toml
-            core_toml = adapter / "config" / "core.toml"
-            with open(core_toml, "rb") as f:
-                data = tomllib.load(f)
-            data["kits"]["sdlc"]["resources"] = {
-                "prd_artifacts": {"path": "config/kits/sdlc/artifacts/PRD"},
-            }
-            _write_toml(core_toml, data)
 
             cwd = os.getcwd()
             try:
                 os.chdir(str(root))
-                with patch("cypilot.commands.update.CACHE_DIR", cache):
+                with (
+                    patch("cypilot.commands.update.CACHE_DIR", cache),
+                    patch(
+                        "cypilot.commands.kit._download_kit_from_github",
+                        return_value=(kit_src, "2.0"),
+                    ),
+                ):
                     buf = io.StringIO()
                     err = io.StringIO()
                     with redirect_stdout(buf), redirect_stderr(err):
@@ -1768,19 +1801,45 @@ class TestCmdUpdateManifestMigration(unittest.TestCase):
     def test_dry_run_skips_migration(self):
         """--dry-run does not trigger manifest migration."""
         from cypilot.commands.update import cmd_update
-        import tomllib
+        import tomllib, textwrap
+
         with TemporaryDirectory() as td:
             root = Path(td) / "proj"
             root.mkdir()
+            (root / ".git").mkdir()
+
+            adapter = root / "cypilot"
+            config = adapter / "config"
+            config_kit = config / "kits" / "sdlc"
+            config_kit.mkdir(parents=True)
+            (adapter / ".core").mkdir(parents=True)
+            (adapter / ".gen").mkdir(parents=True)
+
+            (config_kit / "constraints.toml").write_text('[artifacts]\n', encoding="utf-8")
+            (config_kit / "SKILL.md").write_text("# Kit sdlc\n", encoding="utf-8")
+            _write_toml(config_kit / "conf.toml", {"version": "2.0"})
+
+            # core.toml: NO resources
+            _write_toml(config / "core.toml", {
+                "version": "1.0",
+                "project_root": "..",
+                "kits": {
+                    "sdlc": {
+                        "format": "Cypilot",
+                        "path": "config/kits/sdlc",
+                        "version": "2.0",
+                    },
+                },
+            })
+
+            (root / "AGENTS.md").write_text(
+                '<!-- @cpt:root-agents -->\n```toml\ncypilot_path = "cypilot"\n```\n<!-- /@cpt:root-agents -->\n',
+                encoding="utf-8",
+            )
+
             cache = Path(td) / "cache"
-            _make_cache(cache)
-
-            # Init WITHOUT manifest — so init doesn't trigger migration
-            adapter = _init_project(root, cache)
-
-            # Now add manifest.toml to cache kit AFTER init
+            _make_cache(cache, kit_version="2.0")
             kit_src = cache / "kits" / "sdlc"
-            import textwrap
             (kit_src / "manifest.toml").write_text(textwrap.dedent("""\
                 [manifest]
                 version = "1.0"
@@ -1788,24 +1847,23 @@ class TestCmdUpdateManifestMigration(unittest.TestCase):
                 user_modifiable = false
 
                 [[resources]]
-                id = "prd_artifacts"
-                source = "artifacts/PRD"
-                default_path = "artifacts/PRD"
-                type = "directory"
+                id = "constraints"
+                source = "constraints.toml"
+                default_path = "constraints.toml"
+                type = "file"
                 user_modifiable = false
             """), encoding="utf-8")
-
-            # Ensure no resources in core.toml before dry-run
-            core_toml = adapter / "config" / "core.toml"
-            with open(core_toml, "rb") as f:
-                data = tomllib.load(f)
-            data["kits"]["sdlc"].pop("resources", None)
-            _write_toml(core_toml, data)
 
             cwd = os.getcwd()
             try:
                 os.chdir(str(root))
-                with patch("cypilot.commands.update.CACHE_DIR", cache):
+                with (
+                    patch("cypilot.commands.update.CACHE_DIR", cache),
+                    patch(
+                        "cypilot.commands.kit._download_kit_from_github",
+                        return_value=(kit_src, "2.0"),
+                    ),
+                ):
                     buf = io.StringIO()
                     err = io.StringIO()
                     with redirect_stdout(buf), redirect_stderr(err):
@@ -1813,6 +1871,7 @@ class TestCmdUpdateManifestMigration(unittest.TestCase):
                 self.assertEqual(rc, 0)
 
                 # No resources should be populated (dry-run)
+                core_toml = config / "core.toml"
                 with open(core_toml, "rb") as f:
                     data = tomllib.load(f)
                 sdlc_entry = data["kits"]["sdlc"]

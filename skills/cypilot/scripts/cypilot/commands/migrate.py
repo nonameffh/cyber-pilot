@@ -1741,22 +1741,16 @@ def _regenerate_gen_from_config(config_dir: Path, gen_dir: Path, cypilot_dir: Op
 def _write_gen_agents(gen_dir: Path, project_name: str) -> None:
     """Write .gen/AGENTS.md with generated navigation rules."""
     # @cpt-begin:cpt-cypilot-algo-v2-v3-migration-write-gen-agents:p1:inst-compose-agents
-    kit_id = "cypilot-sdlc"
-    artifacts_when = (
-        f"ALWAYS open and follow `{{cypilot_path}}/config/artifacts.toml` "
-        f"WHEN Cypilot uses kit `{kit_id}` for artifact kinds: "
-        f"PRD, DESIGN, DECOMPOSITION, ADR, FEATURE OR codebase"
-    )
     content = "\n".join([
         f"# Cypilot: {project_name}",
         "",
         "## Navigation Rules",
         "",
+        "ALWAYS open and follow `{cypilot_path}/config/artifacts.toml` WHEN working with artifacts or codebase",
+        "",
         "ALWAYS open and follow `{cypilot_path}/.core/schemas/artifacts.schema.json` WHEN working with artifacts.toml",
         "",
         "ALWAYS open and follow `{cypilot_path}/.core/architecture/specs/artifacts-registry.md` WHEN working with artifacts.toml",
-        "",
-        artifacts_when,
         "",
     ])
     # @cpt-end:cpt-cypilot-algo-v2-v3-migration-write-gen-agents:p1:inst-compose-agents

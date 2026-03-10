@@ -108,16 +108,17 @@ Ensures teams can upgrade Cypilot without losing configuration or customizations
 
 ### Update Pipeline
 
-- [ ] `p1` - **ID**: `cpt-cypilot-algo-version-config-update-pipeline`
+- [x] `p1` - **ID**: `cpt-cypilot-algo-version-config-update-pipeline`
 
 1. [x] - `p1` - Replace `.core/` from cache - `inst-replace-core-algo`
 2. [x] - `p1` - Detect and auto-restructure old directory layout - `inst-detect-layout-algo`
 3. [x] - `p1` - Migrate `{cypilot_path}/config/core.toml` - `inst-migrate-config-algo`
-4. [ ] - `p1` - Remove `[system]` section from `core.toml` if present (per `cpt-cypilot-adr-remove-system-from-core-toml`) - `inst-remove-system-section-algo`
+4. [x] - `p1` - Remove `[system]` section from `core.toml` if present (per `cpt-cypilot-adr-remove-system-from-core-toml`) - `inst-remove-system-section-algo`
 5. [x] - `p1` - Migrate bundled kit references to GitHub sources (add `source` field) - `inst-migrate-kit-sources-algo`
-5. [ ] - `p1` - Trigger legacy manifest migration for kits updated to manifest-driven versions without existing resource bindings - `inst-manifest-legacy-migration-algo`
-6. [x] - `p1` - (Removed — no separate regen step; kit files are updated directly) - `inst-regen-algo`
-7. [x] - `p1` - Ensure config scaffold - `inst-scaffold-algo`
+6. [x] - `p1` - Trigger legacy manifest migration for kits updated to manifest-driven versions without existing resource bindings - `inst-manifest-legacy-migration-algo`
+7. [x] - `p1` - Helper: check manifest presence and resource binding state before triggering migration - `inst-manifest-legacy-migration-helper`
+8. [x] - `p1` - (Removed — no separate regen step; kit files are updated directly) - `inst-regen-algo`
+9. [x] - `p1` - Ensure config scaffold - `inst-scaffold-algo`
 
 ### Layout Restructuring
 

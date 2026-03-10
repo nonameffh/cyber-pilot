@@ -180,6 +180,7 @@ def cmd_update(argv: List[str]) -> int:
     # @cpt-end:cpt-cypilot-algo-version-config-update-pipeline:p1:inst-detect-layout-algo
 
     # @cpt-begin:cpt-cypilot-algo-version-config-update-pipeline:p1:inst-migrate-config-algo
+    # @cpt-begin:cpt-cypilot-algo-version-config-update-pipeline:p1:inst-remove-system-section-algo
     # @cpt-begin:cpt-cypilot-flow-version-config-update:p1:inst-migrate-config
     # ── Step 1b2: Migrate core.toml — remove [system] section (ADR-0014) ──
     if not args.dry_run:
@@ -188,6 +189,7 @@ def cmd_update(argv: List[str]) -> int:
             ui.step("Removed [system] section from core.toml (ADR-0014: system identity lives in artifacts.toml)")
             actions["core_toml_system_removed"] = True
     # @cpt-end:cpt-cypilot-flow-version-config-update:p1:inst-migrate-config
+    # @cpt-end:cpt-cypilot-algo-version-config-update-pipeline:p1:inst-remove-system-section-algo
     # @cpt-end:cpt-cypilot-algo-version-config-update-pipeline:p1:inst-migrate-config-algo
 
     # @cpt-begin:cpt-cypilot-algo-version-config-update-pipeline:p1:inst-migrate-kit-sources-algo
@@ -257,7 +259,7 @@ def cmd_update(argv: List[str]) -> int:
                 source=source_str,
             )
 
-            # @cpt-begin:cpt-cypilot-algo-version-config-update-pipeline:p1:inst-manifest-migration-algo
+            # @cpt-begin:cpt-cypilot-algo-version-config-update-pipeline:p1:inst-manifest-legacy-migration-algo
             # WP7: Auto-migrate legacy kits to manifest-driven resource bindings.
             # update_kit() handles migration when it runs fully, but skips it
             # when versions match (early return).  This catch-all ensures
@@ -282,7 +284,7 @@ def cmd_update(argv: List[str]) -> int:
                             f"{kit_slug}: manifest migration failed: "
                             f"{_mig.get('errors', [])}"
                         )
-            # @cpt-end:cpt-cypilot-algo-version-config-update-pipeline:p1:inst-manifest-migration-algo
+            # @cpt-end:cpt-cypilot-algo-version-config-update-pipeline:p1:inst-manifest-legacy-migration-algo
 
         except Exception as exc:
             kit_r = {
@@ -477,7 +479,7 @@ def _config_readme_content() -> str:
     )
 
 
-# @cpt-begin:cpt-cypilot-algo-version-config-update-pipeline:p1:inst-manifest-migration-helper
+# @cpt-begin:cpt-cypilot-algo-version-config-update-pipeline:p1:inst-manifest-legacy-migration-helper
 def _maybe_migrate_legacy_to_manifest(
     kit_slug: str,
     kit_src: Path,
@@ -514,7 +516,7 @@ def _maybe_migrate_legacy_to_manifest(
     return migrate_legacy_kit_to_manifest(
         kit_src, cypilot_dir, kit_slug, interactive=interactive,
     )
-# @cpt-end:cpt-cypilot-algo-version-config-update-pipeline:p1:inst-manifest-migration-helper
+# @cpt-end:cpt-cypilot-algo-version-config-update-pipeline:p1:inst-manifest-legacy-migration-helper
 
 
 def _maybe_regenerate_agents(

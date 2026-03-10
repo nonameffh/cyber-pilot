@@ -316,28 +316,22 @@ def regenerate_gen_aggregates(cypilot_dir: Path) -> Dict[str, Any]:
     # @cpt-end:cpt-cypilot-algo-kit-regen-gen:p1:inst-scan-kits
 
     # @cpt-begin:cpt-cypilot-algo-kit-regen-gen:p1:inst-read-project-name
-    # Read project name from core.toml
-    project_name = _read_project_name_from_core(config_dir) or "Cypilot"
+    # Read project name from artifacts.toml (ADR-0014)
+    project_name = _read_project_name_from_registry(config_dir) or "Cypilot"
     # @cpt-end:cpt-cypilot-algo-kit-regen-gen:p1:inst-read-project-name
 
     # @cpt-begin:cpt-cypilot-algo-kit-regen-gen:p1:inst-write-gen-agents
     # Write .gen/AGENTS.md
-    kit_id = "cypilot-sdlc"
-    artifacts_when = (
-        f"ALWAYS open and follow `{{cypilot_path}}/config/artifacts.toml` "
-        f"WHEN Cypilot uses kit `{kit_id}` for artifact kinds: "
-        f"PRD, DESIGN, DECOMPOSITION, ADR, FEATURE OR codebase"
-    )
     gen_agents_content = "\n".join([
         f"# Cypilot: {project_name}",
         "",
         "## Navigation Rules",
         "",
+        "ALWAYS open and follow `{cypilot_path}/config/artifacts.toml` WHEN working with artifacts or codebase",
+        "",
         "ALWAYS open and follow `{cypilot_path}/.core/schemas/artifacts.schema.json` WHEN working with artifacts.toml",
         "",
         "ALWAYS open and follow `{cypilot_path}/.core/architecture/specs/artifacts-registry.md` WHEN working with artifacts.toml",
-        "",
-        artifacts_when,
         "",
     ])
     if gen_agents_parts:
@@ -368,22 +362,28 @@ def regenerate_gen_aggregates(cypilot_dir: Path) -> Dict[str, Any]:
     return result
 
 
-def _read_project_name_from_core(config_dir: Path) -> Optional[str]:
-    """Read project name from config/core.toml [system].name."""
-    core_toml = config_dir / "core.toml"
-    if not core_toml.is_file():
+def _read_project_name_from_registry(config_dir: Path) -> Optional[str]:
+    """Read project name from config/artifacts.toml [[systems]][0].name.
+
+    Per ADR-0014 (cpt-cypilot-adr-remove-system-from-core-toml),
+    artifacts.toml is the single source of truth for system identity.
+    """
+    artifacts_toml = config_dir / "artifacts.toml"
+    if not artifacts_toml.is_file():
         return None
     try:
         import tomllib
-        with open(core_toml, "rb") as f:
+        with open(artifacts_toml, "rb") as f:
             data = tomllib.load(f)
-        system = data.get("system", {})
-        if isinstance(system, dict):
-            name = system.get("name")
-            if isinstance(name, str) and name.strip():
-                return name.strip()
+        systems = data.get("systems", [])
+        if isinstance(systems, list) and systems:
+            first = systems[0]
+            if isinstance(first, dict):
+                name = first.get("name")
+                if isinstance(name, str) and name.strip():
+                    return name.strip()
     except Exception as exc:
-        sys.stderr.write(f"kit: warning: cannot read project name from {core_toml}: {exc}\n")
+        sys.stderr.write(f"kit: warning: cannot read project name from {artifacts_toml}: {exc}\n")
     return None
 
 
@@ -400,6 +400,8 @@ def install_kit(
     kit_slug: str,
     kit_version: str = "",
     source: str = "",
+    *,
+    interactive: bool = False,
 ) -> Dict[str, Any]:
     """Install a kit: copy ready files from source into config/kits/{slug}/.
 
@@ -412,6 +414,7 @@ def install_kit(
         kit_slug: Kit identifier.
         kit_version: Kit version string.
         source: Source identifier for registration (e.g. "github:owner/repo").
+        interactive: If True and stdin is a tty, prompt for user_modifiable paths.
 
     Returns:
         Dict with: status, kit, version, files_copied,
@@ -433,8 +436,19 @@ def install_kit(
         }
     # @cpt-end:cpt-cypilot-algo-kit-install:p1:inst-validate-source
 
+    # @cpt-begin:cpt-cypilot-algo-kit-install:p1:inst-manifest-install
+    # Check for manifest-driven installation
+    from ..utils.manifest import load_manifest
+    manifest = load_manifest(kit_source)
+    if manifest is not None:
+        return install_kit_with_manifest(
+            kit_source, cypilot_dir, kit_slug, kit_version,
+            manifest, interactive=interactive, source=source,
+        )
+    # @cpt-end:cpt-cypilot-algo-kit-install:p1:inst-manifest-install
+
     # @cpt-begin:cpt-cypilot-algo-kit-install:p1:inst-copy-content
-    # Copy kit content → config/kits/{slug}/
+    # Copy kit content → config/kits/{slug}/ (legacy path)
     copy_actions = _copy_kit_content(kit_source, config_kit_dir)
     actions.update(copy_actions)
     # @cpt-end:cpt-cypilot-algo-kit-install:p1:inst-copy-content
@@ -479,6 +493,343 @@ def install_kit(
         "actions": actions,
     }
     # @cpt-end:cpt-cypilot-algo-kit-install:p1:inst-return-result
+
+
+# ---------------------------------------------------------------------------
+# Manifest-driven kit installation
+# ---------------------------------------------------------------------------
+
+# @cpt-algo:cpt-cypilot-algo-kit-manifest-install:p1
+def install_kit_with_manifest(
+    kit_source: Path,
+    cypilot_dir: Path,
+    kit_slug: str,
+    kit_version: str,
+    manifest: "Manifest",
+    *,
+    interactive: bool = True,
+    source: str = "",
+) -> Dict[str, Any]:
+    """Install a kit using its manifest.toml — manifest-driven installation.
+
+    Each declared resource is copied from kit source to a resolved target path.
+    Resource bindings are registered in core.toml under ``[kits.{slug}.resources]``.
+
+    Args:
+        kit_source: Kit source directory (containing manifest.toml).
+        cypilot_dir: Resolved project cypilot directory.
+        kit_slug: Kit identifier.
+        kit_version: Kit version string.
+        manifest: Parsed Manifest object.
+        interactive: If True and stdin is a tty, prompt for user_modifiable paths.
+        source: Source identifier for registration (e.g. "github:owner/repo").
+
+    Returns:
+        Dict with: status, kit, version, files_copied, resource_bindings,
+        errors, skill_nav, agents_content.
+    """
+    from ..utils.manifest import validate_manifest
+
+    config_dir = cypilot_dir / "config"
+    errors: List[str] = []  # collects non-fatal warnings (copy/template failures)
+    files_copied = 0
+
+    # @cpt-begin:cpt-cypilot-algo-kit-manifest-install:p1:inst-manifest-read
+    # Validate manifest against kit source
+    validation_errors = validate_manifest(manifest, kit_source)
+    if validation_errors:
+        return {
+            "status": "FAIL",
+            "kit": kit_slug,
+            "errors": validation_errors,
+        }
+    # @cpt-end:cpt-cypilot-algo-kit-manifest-install:p1:inst-manifest-read
+
+    # @cpt-begin:cpt-cypilot-algo-kit-manifest-install:p1:inst-manifest-root-prompt
+    # Resolve kit root directory from manifest template
+    kit_root_template = manifest.root
+    kit_root_rel = kit_root_template.replace(
+        "{cypilot_path}", "."
+    ).replace(
+        "{slug}", kit_slug
+    )
+    kit_root = (cypilot_dir / kit_root_rel).resolve()
+
+    if interactive and manifest.user_modifiable and sys.stdin.isatty():
+        try:
+            user_input = input(
+                f"Kit root directory [{kit_root}]: "
+            ).strip()
+            if user_input:
+                kit_root = Path(user_input).resolve()
+        except (EOFError, KeyboardInterrupt):
+            pass
+    # @cpt-end:cpt-cypilot-algo-kit-manifest-install:p1:inst-manifest-root-prompt
+
+    kit_root.mkdir(parents=True, exist_ok=True)
+    resource_bindings: Dict[str, Dict[str, str]] = {}
+
+    # @cpt-begin:cpt-cypilot-algo-kit-manifest-install:p1:inst-manifest-foreach-resource
+    for res in manifest.resources:
+        # @cpt-begin:cpt-cypilot-algo-kit-manifest-install:p1:inst-manifest-prompt-path
+        target_rel = res.default_path
+        if interactive and res.user_modifiable and sys.stdin.isatty():
+            try:
+                prompt_default = str(kit_root / res.default_path)
+                user_input = input(
+                    f"  Resource '{res.id}' path [{prompt_default}]: "
+                ).strip()
+                if user_input:
+                    # User provided absolute or relative path
+                    user_path = Path(user_input)
+                    if user_path.is_absolute():
+                        target_abs = user_path
+                    else:
+                        target_abs = (kit_root / user_path).resolve()
+                    # Compute relative path from cypilot_dir for binding
+                    target_rel = os.path.relpath(target_abs, cypilot_dir)
+                    resource_bindings[res.id] = {"path": target_rel}
+                    # @cpt-begin:cpt-cypilot-algo-kit-manifest-install:p1:inst-manifest-copy-resource
+                    _copy_manifest_resource(kit_source, res, target_abs)
+                    # @cpt-end:cpt-cypilot-algo-kit-manifest-install:p1:inst-manifest-copy-resource
+                    files_copied += 1
+                    continue
+            except (EOFError, KeyboardInterrupt):
+                pass
+        # @cpt-end:cpt-cypilot-algo-kit-manifest-install:p1:inst-manifest-prompt-path
+
+        # @cpt-begin:cpt-cypilot-algo-kit-manifest-install:p1:inst-manifest-default-path
+        target_abs = (kit_root / res.default_path).resolve()
+        # Store binding relative to cypilot_dir (supports .. for paths outside)
+        binding_path = os.path.relpath(target_abs, cypilot_dir)
+        resource_bindings[res.id] = {"path": binding_path}
+        # @cpt-end:cpt-cypilot-algo-kit-manifest-install:p1:inst-manifest-default-path
+
+        # @cpt-begin:cpt-cypilot-algo-kit-manifest-install:p1:inst-manifest-copy-resource
+        _copy_manifest_resource(kit_source, res, target_abs)
+        # @cpt-end:cpt-cypilot-algo-kit-manifest-install:p1:inst-manifest-copy-resource
+        files_copied += 1
+    # @cpt-end:cpt-cypilot-algo-kit-manifest-install:p1:inst-manifest-foreach-resource
+
+    # @cpt-begin:cpt-cypilot-algo-kit-manifest-install:p1:inst-manifest-resolve-vars
+    # Resolve {identifier} template variables in all copied kit files
+    _resolve_template_variables(kit_root, resource_bindings)
+    # @cpt-end:cpt-cypilot-algo-kit-manifest-install:p1:inst-manifest-resolve-vars
+
+    # @cpt-begin:cpt-cypilot-algo-kit-manifest-install:p1:inst-manifest-register-bindings
+    # Read version from source conf.toml if not provided
+    if not kit_version:
+        src_conf = kit_source / _KIT_CONF_FILE
+        if src_conf.is_file():
+            kit_version = _read_kit_version(src_conf)
+
+    # Seed kit config files into config/ (only if missing)
+    scripts_dir = kit_root / "scripts"
+    if scripts_dir.is_dir():
+        _seed_kit_config_files(scripts_dir, config_dir, {})
+
+    # Register in core.toml with resource bindings
+    _register_kit_in_core_toml(
+        config_dir, kit_slug, kit_version, cypilot_dir,
+        source=source, resources=resource_bindings,
+    )
+    # @cpt-end:cpt-cypilot-algo-kit-manifest-install:p1:inst-manifest-register-bindings
+
+    # @cpt-begin:cpt-cypilot-algo-kit-manifest-install:p1:inst-manifest-collect-meta
+    # Collect metadata for .gen/ aggregation
+    meta = _collect_kit_metadata(kit_root, kit_slug)
+    # @cpt-end:cpt-cypilot-algo-kit-manifest-install:p1:inst-manifest-collect-meta
+
+    # @cpt-begin:cpt-cypilot-algo-kit-manifest-install:p1:inst-manifest-return
+    return {
+        "status": "PASS" if not errors else "WARN",
+        "action": "installed",
+        "kit": kit_slug,
+        "version": kit_version,
+        "files_copied": files_copied,
+        "resource_bindings": {k: v["path"] for k, v in resource_bindings.items()},
+        "errors": errors,
+        "skill_nav": meta["skill_nav"],
+        "agents_content": meta["agents_content"],
+    }
+    # @cpt-end:cpt-cypilot-algo-kit-manifest-install:p1:inst-manifest-return
+
+
+def _copy_manifest_resource(
+    kit_source: Path,
+    res: "ManifestResource",
+    target_abs: Path,
+) -> None:
+    """Copy a single manifest resource from kit source to target path.
+
+    Note: For directory resources, the existing target is removed before copying.
+    Callers are responsible for ensuring *target_abs* is within the expected
+    kit root directory (validated by ``validate_manifest`` for default paths;
+    user-provided interactive paths are trusted as local CLI input).
+    """
+    src = kit_source / res.source
+    if res.type == "directory":
+        if target_abs.exists():
+            shutil.rmtree(target_abs)
+        shutil.copytree(src, target_abs)
+    else:
+        target_abs.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, target_abs)
+
+
+_TEMPLATE_EXTENSIONS = {".md", ".toml", ".txt", ".yaml", ".yml"}
+
+
+def _resolve_template_variables(
+    kit_root: Path,
+    resource_bindings: Dict[str, Dict[str, str]],
+) -> None:
+    """Resolve ``{identifier}`` template variables in copied kit text files.
+
+    Walks *kit_root* recursively and replaces ``{resource_id}`` placeholders
+    with the resolved path from *resource_bindings* in all text files with
+    supported extensions.
+    """
+    if not resource_bindings:
+        return
+
+    replacements = {f"{{{rid}}}": info["path"] for rid, info in resource_bindings.items()}
+
+    for fpath in kit_root.rglob("*"):
+        if not fpath.is_file() or fpath.suffix not in _TEMPLATE_EXTENSIONS:
+            continue
+        try:
+            text = fpath.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        new_text = text
+        for pattern, value in replacements.items():
+            new_text = new_text.replace(pattern, value)
+        if new_text != text:
+            fpath.write_text(new_text, encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# Legacy Install Migration — auto-populate resource bindings from disk
+# ---------------------------------------------------------------------------
+
+# @cpt-algo:cpt-cypilot-algo-kit-manifest-legacy-migration:p1
+def migrate_legacy_kit_to_manifest(
+    kit_source: Path,
+    cypilot_dir: Path,
+    kit_slug: str,
+    *,
+    interactive: bool = True,
+) -> Dict[str, Any]:
+    """Migrate a legacy kit install to manifest-driven resource bindings.
+
+    When ``cpt update`` runs and the kit source now contains ``manifest.toml``
+    but ``core.toml`` has no ``[kits.{slug}.resources]``, this function
+    auto-populates resource bindings from existing files on disk.
+
+    For each manifest resource:
+    - If the file/directory already exists at the expected path → register silently.
+    - If it does not exist (truly new resource) → copy from source and register.
+
+    Args:
+        kit_source: Kit source directory (containing ``manifest.toml``).
+        cypilot_dir: Resolved project cypilot directory.
+        kit_slug: Kit identifier.
+        interactive: If True and stdin is a tty, prompt for new resource paths.
+
+    Returns:
+        Dict with: status, kit, migrated_count, new_count, resource_bindings.
+    """
+    from ..utils.manifest import load_manifest, validate_manifest
+
+    config_dir = cypilot_dir / "config"
+    resource_bindings: Dict[str, Dict[str, str]] = {}
+    migrated_count = 0  # existing files registered silently
+    new_count = 0       # new files copied from source
+
+    # @cpt-begin:cpt-cypilot-algo-kit-manifest-legacy-migration:p1:inst-legacy-read-manifest
+    manifest = load_manifest(kit_source)
+    if manifest is None:
+        return {
+            "status": "SKIP",
+            "kit": kit_slug,
+            "message": "No manifest.toml in kit source",
+        }
+
+    validation_errors = validate_manifest(manifest, kit_source)
+    if validation_errors:
+        return {
+            "status": "FAIL",
+            "kit": kit_slug,
+            "errors": validation_errors,
+        }
+    # @cpt-end:cpt-cypilot-algo-kit-manifest-legacy-migration:p1:inst-legacy-read-manifest
+
+    # @cpt-begin:cpt-cypilot-algo-kit-manifest-legacy-migration:p1:inst-legacy-read-root
+    kit_data = _read_kits_from_core_toml(config_dir).get(kit_slug, {})
+    kit_root_rel = kit_data.get("path", f"config/kits/{kit_slug}")
+    kit_root = (cypilot_dir / kit_root_rel).resolve()
+    # @cpt-end:cpt-cypilot-algo-kit-manifest-legacy-migration:p1:inst-legacy-read-root
+
+    # @cpt-begin:cpt-cypilot-algo-kit-manifest-legacy-migration:p1:inst-legacy-foreach-resource
+    for res in manifest.resources:
+        # @cpt-begin:cpt-cypilot-algo-kit-manifest-legacy-migration:p1:inst-legacy-compute-path
+        expected_path = kit_root / res.default_path
+        # @cpt-end:cpt-cypilot-algo-kit-manifest-legacy-migration:p1:inst-legacy-compute-path
+
+        # @cpt-begin:cpt-cypilot-algo-kit-manifest-legacy-migration:p1:inst-legacy-register-existing
+        if expected_path.exists():
+            # File/directory already on disk — register silently
+            binding_path = os.path.relpath(expected_path, cypilot_dir)
+            resource_bindings[res.id] = {"path": binding_path}
+            migrated_count += 1
+            continue
+        # @cpt-end:cpt-cypilot-algo-kit-manifest-legacy-migration:p1:inst-legacy-register-existing
+
+        # @cpt-begin:cpt-cypilot-algo-kit-manifest-legacy-migration:p1:inst-legacy-prompt-new
+        # Truly new resource — copy from source and register
+        target_abs = expected_path
+        if interactive and res.user_modifiable and sys.stdin.isatty():
+            try:
+                user_input = input(
+                    f"  New resource '{res.id}' path [{expected_path}]: "
+                ).strip()
+                if user_input:
+                    user_path = Path(user_input)
+                    if user_path.is_absolute():
+                        target_abs = user_path
+                    else:
+                        target_abs = (kit_root / user_path).resolve()
+            except (EOFError, KeyboardInterrupt):
+                pass
+
+        _copy_manifest_resource(kit_source, res, target_abs)
+        binding_path = os.path.relpath(target_abs, cypilot_dir)
+        resource_bindings[res.id] = {"path": binding_path}
+        new_count += 1
+        # @cpt-end:cpt-cypilot-algo-kit-manifest-legacy-migration:p1:inst-legacy-prompt-new
+    # @cpt-end:cpt-cypilot-algo-kit-manifest-legacy-migration:p1:inst-legacy-foreach-resource
+
+    # @cpt-begin:cpt-cypilot-algo-kit-manifest-legacy-migration:p1:inst-legacy-write-bindings
+    # Write all resource bindings to core.toml [kits.{slug}.resources]
+    _register_kit_in_core_toml(
+        config_dir, kit_slug, "", cypilot_dir,
+        resources=resource_bindings,
+    )
+    # Resolve template variables in kit files with new resource bindings
+    _resolve_template_variables(kit_root, resource_bindings)
+    # @cpt-end:cpt-cypilot-algo-kit-manifest-legacy-migration:p1:inst-legacy-write-bindings
+
+    # @cpt-begin:cpt-cypilot-algo-kit-manifest-legacy-migration:p1:inst-legacy-return
+    return {
+        "status": "PASS",
+        "kit": kit_slug,
+        "migrated_count": migrated_count,
+        "new_count": new_count,
+        "resource_bindings": {k: v["path"] for k, v in resource_bindings.items()},
+    }
+    # @cpt-end:cpt-cypilot-algo-kit-manifest-legacy-migration:p1:inst-legacy-return
+
 
 # ---------------------------------------------------------------------------
 # Kit Install CLI
@@ -603,7 +954,7 @@ def cmd_kit_install(argv: List[str]) -> int:
         # @cpt-end:cpt-cypilot-flow-kit-install-cli:p1:inst-dry-run
 
         # @cpt-begin:cpt-cypilot-flow-kit-install-cli:p1:inst-delegate-install
-        result = install_kit(kit_source, cypilot_dir, kit_slug, kit_version, source=github_source)
+        result = install_kit(kit_source, cypilot_dir, kit_slug, kit_version, source=github_source, interactive=True)
         # @cpt-end:cpt-cypilot-flow-kit-install-cli:p1:inst-delegate-install
 
         # @cpt-begin:cpt-cypilot-flow-kit-install-cli:p1:inst-regen-gen
@@ -804,6 +1155,9 @@ def cmd_kit_update(argv: List[str]) -> int:
 
     for kit_slug, kit_source, github_source, tmp_dir in update_targets:
         try:
+            # @cpt-begin:cpt-cypilot-flow-kit-update-cli:p1:inst-legacy-migration
+            # Legacy manifest migration is handled inside update_kit() when
+            # source has manifest.toml and kit lacks resource bindings.
             kit_r = update_kit(
                 kit_slug, kit_source, cypilot_dir,
                 dry_run=args.dry_run,
@@ -812,6 +1166,7 @@ def cmd_kit_update(argv: List[str]) -> int:
                 force=args.force,
                 source=github_source,
             )
+            # @cpt-end:cpt-cypilot-flow-kit-update-cli:p1:inst-legacy-migration
         except Exception as exc:
             kit_r = {"kit": kit_slug, "version": {"status": "ERROR"}, "gen": {}}
             errors.append(f"{kit_slug}: {exc}")
@@ -1162,6 +1517,23 @@ def update_kit(
             return result
     # @cpt-end:cpt-cypilot-algo-kit-update:p1:inst-version-check
 
+    # @cpt-begin:cpt-cypilot-algo-kit-update:p1:inst-legacy-manifest-migration
+    # Before file-level diff, check for legacy → manifest migration
+    from ..utils.manifest import load_manifest as _load_manifest
+    _manifest = _load_manifest(source_dir)
+    if _manifest is not None and config_kit_dir.is_dir():
+        _kit_data = _read_kits_from_core_toml(config_dir).get(kit_slug, {})
+        if not _kit_data.get("resources"):
+            _mig_result = migrate_legacy_kit_to_manifest(
+                source_dir, cypilot_dir, kit_slug, interactive=interactive,
+            )
+            if _mig_result.get("status") == "FAIL":
+                sys.stderr.write(
+                    f"kit: warning: manifest migration for '{kit_slug}' failed: "
+                    f"{_mig_result.get('errors', [])}\n"
+                )
+    # @cpt-end:cpt-cypilot-algo-kit-update:p1:inst-legacy-manifest-migration
+
     # @cpt-begin:cpt-cypilot-algo-kit-update:p1:inst-first-install
     # ── 1. First-install or file-level update ────────────────────────
     if not config_kit_dir.is_dir():
@@ -1360,6 +1732,7 @@ def _register_kit_in_core_toml(
     kit_version: str,
     cypilot_dir: Path,
     source: str = "",
+    resources: Optional[Dict[str, Dict[str, str]]] = None,
 ) -> None:
     """Register or update a kit entry in config/core.toml."""
     # @cpt-begin:cpt-cypilot-algo-kit-config-helpers:p1:inst-register-core
@@ -1386,6 +1759,8 @@ def _register_kit_in_core_toml(
         existing["source"] = source
     if kit_version:
         existing["version"] = kit_version
+    if resources is not None:
+        existing["resources"] = resources
     kits[kit_slug] = existing
 
     # Write back using our TOML serializer

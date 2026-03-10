@@ -122,16 +122,15 @@ def _config_readme() -> str:
         "- Kit files can be edited directly; `cpt kit update` shows a diff for changes.\n"
     )
 
-def _default_core_toml(system_name: str, system_slug: str) -> dict:
-    """Build default core.toml data for a new project."""
+def _default_core_toml() -> dict:
+    """Build default core.toml data for a new project.
+
+    System identity (name, slug, kit) is defined in artifacts.toml only
+    (see ADR-0014: cpt-cypilot-adr-remove-system-from-core-toml).
+    """
     return {
         "version": "1.0",
         "project_root": "..",
-        "system": {
-            "name": system_name,
-            "slug": system_slug,
-            "kit": "sdlc",
-        },
         "kits": {
             "sdlc": {
                 "format": "Cypilot",
@@ -468,10 +467,8 @@ def cmd_init(argv: List[str]) -> int:
 
     # @cpt-begin:cpt-cypilot-flow-core-infra-project-init:p1:inst-create-config
     # @cpt-begin:cpt-cypilot-algo-core-infra-create-config:p1:inst-mkdir-config
-    desired_registry = generate_default_registry(project_name)
-
     # @cpt-begin:cpt-cypilot-algo-core-infra-create-config:p1:inst-write-core-toml
-    desired_core = _default_core_toml(project_name, root_system["slug"])
+    desired_core = _default_core_toml()
     # @cpt-end:cpt-cypilot-algo-core-infra-create-config:p1:inst-write-core-toml
     # @cpt-end:cpt-cypilot-algo-core-infra-create-config:p1:inst-mkdir-config
     # @cpt-end:cpt-cypilot-flow-core-infra-project-init:p1:inst-create-config
@@ -521,17 +518,6 @@ def cmd_init(argv: List[str]) -> int:
     # (paths reported in final JSON output)
     # @cpt-end:cpt-cypilot-algo-core-infra-create-config:p1:inst-return-config-paths
 
-    # @cpt-begin:cpt-cypilot-algo-core-infra-create-config:p1:inst-write-artifacts-toml
-    registry_path = (config_dir / "artifacts.toml").resolve()
-    registry_existed_before = registry_path.is_file()
-    if registry_existed_before and not args.force:
-        actions["artifacts_registry"] = "unchanged"
-    else:
-        if not args.dry_run:
-            toml_utils.dump(desired_registry, registry_path, header_comment="Cypilot artifacts registry")
-        actions["artifacts_registry"] = "updated" if registry_existed_before else "created"
-    # @cpt-end:cpt-cypilot-algo-core-infra-create-config:p1:inst-write-artifacts-toml
-
     # @cpt-begin:cpt-cypilot-algo-core-infra-create-config:p1:inst-mkdir-kits
     # @cpt-begin:cpt-cypilot-flow-core-infra-project-init:p1:inst-prompt-kit
     # Kit installation via GitHub prompt (ADR-0013)
@@ -542,7 +528,6 @@ def cmd_init(argv: List[str]) -> int:
 
     _DEFAULT_KIT_SOURCE = "cyberfabric/cyber-pilot-kit-sdlc"
     kit_results: Dict[str, Any] = {}
-    kit_installed = False
 
     if not args.dry_run:
         install_kit_flag = False
@@ -574,6 +559,7 @@ def cmd_init(argv: List[str]) -> int:
                 kit_result = install_kit(
                     kit_source_dir, cypilot_dir, kit_slug,
                     kit_version=resolved_version, source=github_source,
+                    interactive=interactive,
                 )
 
                 kit_results[kit_slug] = {
@@ -587,7 +573,6 @@ def cmd_init(argv: List[str]) -> int:
                 for key, val in kit_result.get("actions", {}).items():
                     actions[f"kit_{kit_slug}_{key}"] = val
 
-                kit_installed = True
                 ui.substep(f"Kit '{kit_slug}' installed (v{resolved_version or 'dev'})")
 
                 shutil.rmtree(tmp_to_clean, ignore_errors=True)
@@ -599,6 +584,20 @@ def cmd_init(argv: List[str]) -> int:
         else:
             ui.info(f"Skipped kit installation. Install later: cpt kit install {_DEFAULT_KIT_SOURCE}")
         # @cpt-end:cpt-cypilot-flow-core-infra-project-init:p1:inst-skip-kit-declined
+
+    # @cpt-begin:cpt-cypilot-algo-core-infra-create-config:p1:inst-write-artifacts-toml
+    # Write artifacts.toml after kit install decision so kit slug is known
+    installed_kit_slug = next(iter(kit_results), "") if kit_results else ""
+    desired_registry = generate_default_registry(project_name, kit_slug=installed_kit_slug)
+    registry_path = (config_dir / "artifacts.toml").resolve()
+    registry_existed_before = registry_path.is_file()
+    if registry_existed_before and not args.force:
+        actions["artifacts_registry"] = "unchanged"
+    else:
+        if not args.dry_run:
+            toml_utils.dump(desired_registry, registry_path, header_comment="Cypilot artifacts registry")
+        actions["artifacts_registry"] = "updated" if registry_existed_before else "created"
+    # @cpt-end:cpt-cypilot-algo-core-infra-create-config:p1:inst-write-artifacts-toml
 
     # Regenerate .gen/ aggregates (AGENTS.md, SKILL.md, README.md)
     if not args.dry_run:

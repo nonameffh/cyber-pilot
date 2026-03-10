@@ -95,7 +95,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 
 ### Kit Update CLI
 
-- [ ] `p1` - **ID**: `cpt-cypilot-flow-kit-update-cli`
+- [x] `p1` - **ID**: `cpt-cypilot-flow-kit-update-cli`
 
 **Actor**: `cpt-cypilot-actor-user`
 
@@ -106,7 +106,7 @@ Enables users to install, update, and validate kit packages with interactive fil
 2. [x] - `p1` - Validate kit source directory exists - `inst-validate-source`
 3. [x] - `p1` - Read slug from source conf.toml - `inst-read-slug`
 4. [x] - `p1` - Resolve project root and cypilot directory - `inst-resolve-project`
-5. [ ] - `p1` - **IF** kit source contains `manifest.toml` and existing install has no resource bindings: trigger legacy install migration via `cpt-cypilot-algo-kit-manifest-legacy-migration` - `inst-legacy-migration`
+5. [x] - `p1` - **IF** kit source contains `manifest.toml` and existing install has no resource bindings: trigger legacy install migration via `cpt-cypilot-algo-kit-manifest-legacy-migration` - `inst-legacy-migration`
 6. [x] - `p1` - Delegate to `update_kit()` with interactive/auto_approve/force flags - `inst-delegate-update`
 7. [x] - `p1` - Regenerate `.gen/` aggregates (unless dry-run) - `inst-regen-gen`
 8. [x] - `p1` - Format version status, accepted/declined files, and output result - `inst-format-output`

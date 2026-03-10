@@ -180,10 +180,16 @@ def cmd_update(argv: List[str]) -> int:
     # @cpt-end:cpt-cypilot-algo-version-config-update-pipeline:p1:inst-detect-layout-algo
 
     # @cpt-begin:cpt-cypilot-algo-version-config-update-pipeline:p1:inst-migrate-config-algo
+    # @cpt-begin:cpt-cypilot-algo-version-config-update-pipeline:p1:inst-remove-system-section-algo
     # @cpt-begin:cpt-cypilot-flow-version-config-update:p1:inst-migrate-config
-    # ── Step 1b2: Migrate core.toml (preserve user settings) ─────────────
-    # Currently a no-op: core.toml schema is stable; future migrations go here.
+    # ── Step 1b2: Migrate core.toml — remove [system] section (ADR-0014) ──
+    if not args.dry_run:
+        removed_system = _remove_system_from_core_toml(config_dir)
+        if removed_system:
+            ui.step("Removed [system] section from core.toml (ADR-0014: system identity lives in artifacts.toml)")
+            actions["core_toml_system_removed"] = True
     # @cpt-end:cpt-cypilot-flow-version-config-update:p1:inst-migrate-config
+    # @cpt-end:cpt-cypilot-algo-version-config-update-pipeline:p1:inst-remove-system-section-algo
     # @cpt-end:cpt-cypilot-algo-version-config-update-pipeline:p1:inst-migrate-config-algo
 
     # @cpt-begin:cpt-cypilot-algo-version-config-update-pipeline:p1:inst-migrate-kit-sources-algo
@@ -211,6 +217,7 @@ def cmd_update(argv: List[str]) -> int:
     from .kit import (
         update_kit, regenerate_gen_aggregates,
         _read_kits_from_core_toml, _parse_github_source, _download_kit_from_github,
+        migrate_legacy_kit_to_manifest,
     )
 
     kit_results: Dict[str, Any] = {}
@@ -251,6 +258,34 @@ def cmd_update(argv: List[str]) -> int:
                 auto_approve=args.yes,
                 source=source_str,
             )
+
+            # @cpt-begin:cpt-cypilot-algo-version-config-update-pipeline:p1:inst-manifest-legacy-migration-algo
+            # WP7: Auto-migrate legacy kits to manifest-driven resource bindings.
+            # update_kit() handles migration when it runs fully, but skips it
+            # when versions match (early return).  This catch-all ensures
+            # migration always happens when source has manifest.toml but
+            # core.toml lacks [kits.{slug}.resources].
+            if not args.dry_run and kit_src is not None:
+                _mig = _maybe_migrate_legacy_to_manifest(
+                    kit_slug, kit_src, cypilot_dir, config_dir, interactive,
+                )
+                if _mig is not None:
+                    kit_r["manifest_migration"] = _mig
+                    _mig_status = _mig.get("status", "")
+                    if _mig_status == "PASS":
+                        _m_count = _mig.get("migrated_count", 0)
+                        _n_count = _mig.get("new_count", 0)
+                        ui.substep(
+                            f"{kit_slug}: manifest migration — "
+                            f"{_m_count} existing + {_n_count} new resource(s)"
+                        )
+                    elif _mig_status == "FAIL":
+                        ui.warn(
+                            f"{kit_slug}: manifest migration failed: "
+                            f"{_mig.get('errors', [])}"
+                        )
+            # @cpt-end:cpt-cypilot-algo-version-config-update-pipeline:p1:inst-manifest-legacy-migration-algo
+
         except Exception as exc:
             kit_r = {
                 "kit": kit_slug,
@@ -444,6 +479,46 @@ def _config_readme_content() -> str:
     )
 
 
+# @cpt-begin:cpt-cypilot-algo-version-config-update-pipeline:p1:inst-manifest-legacy-migration-helper
+def _maybe_migrate_legacy_to_manifest(
+    kit_slug: str,
+    kit_src: Path,
+    cypilot_dir: Path,
+    config_dir: Path,
+    interactive: bool,
+) -> Optional[Dict[str, Any]]:
+    """Auto-migrate a legacy kit to manifest-driven bindings if needed.
+
+    Checks two conditions:
+    1. Kit source contains ``manifest.toml``
+    2. ``core.toml`` does NOT have ``[kits.{slug}.resources]``
+
+    If both are true, triggers ``migrate_legacy_kit_to_manifest()``.
+    Returns the migration result dict, or ``None`` if migration was not needed.
+
+    @cpt-algo:cpt-cypilot-algo-kit-manifest-legacy-migration:p1
+    """
+    from ..utils.manifest import load_manifest
+    from .kit import migrate_legacy_kit_to_manifest, _read_kits_from_core_toml
+
+    try:
+        manifest = load_manifest(kit_src)
+    except (ValueError, OSError):
+        return None
+
+    if manifest is None:
+        return None
+
+    kit_data = _read_kits_from_core_toml(config_dir).get(kit_slug, {})
+    if kit_data.get("resources"):
+        return None  # Already has resource bindings
+
+    return migrate_legacy_kit_to_manifest(
+        kit_src, cypilot_dir, kit_slug, interactive=interactive,
+    )
+# @cpt-end:cpt-cypilot-algo-version-config-update-pipeline:p1:inst-manifest-legacy-migration-helper
+
+
 def _maybe_regenerate_agents(
     copy_results: Dict[str, str],
     kit_results: Dict[str, Any],
@@ -511,6 +586,47 @@ def _maybe_regenerate_agents(
     return regenerated
 
 # ---------------------------------------------------------------------------
+# core.toml [system] removal migration (ADR-0014)
+# ---------------------------------------------------------------------------
+
+
+def _remove_system_from_core_toml(config_dir: Path) -> bool:
+    """Remove the [system] section from core.toml if present.
+
+    Per ADR-0014 (cpt-cypilot-adr-remove-system-from-core-toml), system
+    identity lives exclusively in artifacts.toml.  This migration step
+    cleans up legacy core.toml files that still carry the section.
+
+    Returns True if the section was found and removed.
+    """
+    core_toml = config_dir / "core.toml"
+    if not core_toml.is_file():
+        return False
+
+    try:
+        import tomllib
+        with open(core_toml, "rb") as f:
+            data = tomllib.load(f)
+    except Exception as exc:
+        sys.stderr.write(f"update: warning: cannot read {core_toml}: {exc}\n")
+        return False
+
+    if "system" not in data:
+        return False
+
+    del data["system"]
+
+    try:
+        from ..utils import toml_utils
+        toml_utils.dump(data, core_toml, header_comment="Cypilot project configuration")
+    except Exception as exc:
+        sys.stderr.write(f"update: warning: cannot write {core_toml}: {exc}\n")
+        return False
+
+    return True
+
+
+# ---------------------------------------------------------------------------
 # Bundled kit source migration (ADR-0013)
 # ---------------------------------------------------------------------------
 
@@ -526,7 +642,6 @@ def _deduplicate_legacy_kits(config_dir: Path) -> Dict[str, str]:
     If both legacy and canonical slugs exist with the same path,
     merge into canonical and remove legacy. Updates:
     - core.toml [kits] section
-    - core.toml [system].kit reference
     - artifacts.toml [[systems]].kit references
 
     Returns dict of {legacy_slug: canonical_slug} for deduplicated kits.
@@ -563,11 +678,6 @@ def _deduplicate_legacy_kits(config_dir: Path) -> Dict[str, str]:
             if k not in canonical_data or not canonical_data[k]:
                 canonical_data[k] = v
         del kits[legacy]
-
-        # Update system.kit in core.toml
-        system = data.get("system", {})
-        if isinstance(system, dict) and system.get("kit") == legacy:
-            system["kit"] = canonical
 
         renamed[legacy] = canonical
 

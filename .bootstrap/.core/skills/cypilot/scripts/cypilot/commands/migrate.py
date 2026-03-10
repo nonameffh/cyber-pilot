@@ -801,8 +801,8 @@ def generate_core_toml(
     # @cpt-begin:cpt-cypilot-algo-v2-v3-migration-generate-core-toml:p1:inst-derive-project-info
     project_name = project_root.name
     slug_parts = re.split(r'[-_\s]+', project_name.lower())
-    pascal_name = "".join(w.capitalize() for w in slug_parts) if slug_parts else "Unnamed"
-    project_slug = "-".join(slug_parts) if slug_parts else "unnamed"
+    _pascal_name = "".join(w.capitalize() for w in slug_parts) if slug_parts else "Unnamed"
+    _project_slug = "-".join(slug_parts) if slug_parts else "unnamed"
     # @cpt-end:cpt-cypilot-algo-v2-v3-migration-generate-core-toml:p1:inst-derive-project-info
 
     # @cpt-begin:cpt-cypilot-algo-v2-v3-migration-generate-core-toml:p1:inst-set-schema-version
@@ -814,24 +814,7 @@ def generate_core_toml(
     }
     # @cpt-end:cpt-cypilot-algo-v2-v3-migration-generate-core-toml:p1:inst-set-schema-version
 
-    # @cpt-begin:cpt-cypilot-algo-v2-v3-migration-generate-core-toml:p1:inst-iterate-v2-systems
-    # @cpt-begin:cpt-cypilot-algo-v2-v3-migration-generate-core-toml:p1:inst-create-system-entry
-    if v2_systems:
-        primary = v2_systems[0]
-        v2_kit = primary.get("kit", "")
-        core_data["system"] = {
-            "name": primary.get("name", pascal_name),
-            "slug": primary.get("slug", project_slug),
-            "kit": kit_slug_map.get(v2_kit, v2_kit),
-        }
-    else:
-        core_data["system"] = {
-            "name": pascal_name,
-            "slug": project_slug,
-            "kit": "cypilot-sdlc",
-        }
-    # @cpt-end:cpt-cypilot-algo-v2-v3-migration-generate-core-toml:p1:inst-create-system-entry
-    # @cpt-end:cpt-cypilot-algo-v2-v3-migration-generate-core-toml:p1:inst-iterate-v2-systems
+    # [system] section removed per ADR-0014 — system identity lives in artifacts.toml only.
 
     # @cpt-begin:cpt-cypilot-algo-v2-v3-migration-generate-core-toml:p1:inst-register-kits
     kits_registry: Dict[str, Any] = {}
@@ -1758,22 +1741,16 @@ def _regenerate_gen_from_config(config_dir: Path, gen_dir: Path, cypilot_dir: Op
 def _write_gen_agents(gen_dir: Path, project_name: str) -> None:
     """Write .gen/AGENTS.md with generated navigation rules."""
     # @cpt-begin:cpt-cypilot-algo-v2-v3-migration-write-gen-agents:p1:inst-compose-agents
-    kit_id = "cypilot-sdlc"
-    artifacts_when = (
-        f"ALWAYS open and follow `{{cypilot_path}}/config/artifacts.toml` "
-        f"WHEN Cypilot uses kit `{kit_id}` for artifact kinds: "
-        f"PRD, DESIGN, DECOMPOSITION, ADR, FEATURE OR codebase"
-    )
     content = "\n".join([
         f"# Cypilot: {project_name}",
         "",
         "## Navigation Rules",
         "",
+        "ALWAYS open and follow `{cypilot_path}/config/artifacts.toml` WHEN working with artifacts or codebase",
+        "",
         "ALWAYS open and follow `{cypilot_path}/.core/schemas/artifacts.schema.json` WHEN working with artifacts.toml",
         "",
         "ALWAYS open and follow `{cypilot_path}/.core/architecture/specs/artifacts-registry.md` WHEN working with artifacts.toml",
-        "",
-        artifacts_when,
         "",
     ])
     # @cpt-end:cpt-cypilot-algo-v2-v3-migration-write-gen-agents:p1:inst-compose-agents
@@ -1905,14 +1882,19 @@ def run_migrate_config(project_root: Path) -> Dict[str, Any]:
     skipped: List[Dict[str, str]] = []
     primary_slug = _PR_REVIEW_DEFAULT_KIT_SLUG
 
-    core_toml = project_root / "config" / "core.toml"
-    if core_toml.is_file():
+    # Read primary kit slug from artifacts.toml (ADR-0014: system identity
+    # lives in artifacts.toml only; core.toml no longer has [system]).
+    artifacts_toml = project_root / "config" / "artifacts.toml"
+    if artifacts_toml.is_file():
         try:
-            core_data = toml_utils.load(core_toml)
-            primary_slug = (
-                ((core_data.get("system") or {}).get("kit"))  # type: ignore[union-attr]
-                or primary_slug
-            )
+            reg_data = toml_utils.load(artifacts_toml)
+            systems = reg_data.get("systems", [])
+            if isinstance(systems, list) and systems:
+                first_sys = systems[0]
+                if isinstance(first_sys, dict):
+                    kit_val = first_sys.get("kit")
+                    if isinstance(kit_val, str) and kit_val.strip():
+                        primary_slug = kit_val.strip()
         except Exception:
             pass
 # @cpt-end:cpt-cypilot-flow-v2-v3-migration-migrate-config:p1:inst-config-setup

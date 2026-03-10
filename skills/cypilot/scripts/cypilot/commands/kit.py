@@ -322,22 +322,16 @@ def regenerate_gen_aggregates(cypilot_dir: Path) -> Dict[str, Any]:
 
     # @cpt-begin:cpt-cypilot-algo-kit-regen-gen:p1:inst-write-gen-agents
     # Write .gen/AGENTS.md
-    kit_id = "cypilot-sdlc"
-    artifacts_when = (
-        f"ALWAYS open and follow `{{cypilot_path}}/config/artifacts.toml` "
-        f"WHEN Cypilot uses kit `{kit_id}` for artifact kinds: "
-        f"PRD, DESIGN, DECOMPOSITION, ADR, FEATURE OR codebase"
-    )
     gen_agents_content = "\n".join([
         f"# Cypilot: {project_name}",
         "",
         "## Navigation Rules",
         "",
+        "ALWAYS open and follow `{cypilot_path}/config/artifacts.toml` WHEN working with artifacts or codebase",
+        "",
         "ALWAYS open and follow `{cypilot_path}/.core/schemas/artifacts.schema.json` WHEN working with artifacts.toml",
         "",
         "ALWAYS open and follow `{cypilot_path}/.core/architecture/specs/artifacts-registry.md` WHEN working with artifacts.toml",
-        "",
-        artifacts_when,
         "",
     ])
     if gen_agents_parts:
@@ -406,6 +400,8 @@ def install_kit(
     kit_slug: str,
     kit_version: str = "",
     source: str = "",
+    *,
+    interactive: bool = False,
 ) -> Dict[str, Any]:
     """Install a kit: copy ready files from source into config/kits/{slug}/.
 
@@ -418,6 +414,7 @@ def install_kit(
         kit_slug: Kit identifier.
         kit_version: Kit version string.
         source: Source identifier for registration (e.g. "github:owner/repo").
+        interactive: If True and stdin is a tty, prompt for user_modifiable paths.
 
     Returns:
         Dict with: status, kit, version, files_copied,
@@ -446,7 +443,7 @@ def install_kit(
     if manifest is not None:
         return install_kit_with_manifest(
             kit_source, cypilot_dir, kit_slug, kit_version,
-            manifest, interactive=False, source=source,
+            manifest, interactive=interactive, source=source,
         )
     # @cpt-end:cpt-cypilot-algo-kit-install:p1:inst-manifest-install
 
@@ -957,7 +954,7 @@ def cmd_kit_install(argv: List[str]) -> int:
         # @cpt-end:cpt-cypilot-flow-kit-install-cli:p1:inst-dry-run
 
         # @cpt-begin:cpt-cypilot-flow-kit-install-cli:p1:inst-delegate-install
-        result = install_kit(kit_source, cypilot_dir, kit_slug, kit_version, source=github_source)
+        result = install_kit(kit_source, cypilot_dir, kit_slug, kit_version, source=github_source, interactive=True)
         # @cpt-end:cpt-cypilot-flow-kit-install-cli:p1:inst-delegate-install
 
         # @cpt-begin:cpt-cypilot-flow-kit-install-cli:p1:inst-regen-gen
@@ -1158,6 +1155,9 @@ def cmd_kit_update(argv: List[str]) -> int:
 
     for kit_slug, kit_source, github_source, tmp_dir in update_targets:
         try:
+            # @cpt-begin:cpt-cypilot-flow-kit-update-cli:p1:inst-legacy-migration
+            # Legacy manifest migration is handled inside update_kit() when
+            # source has manifest.toml and kit lacks resource bindings.
             kit_r = update_kit(
                 kit_slug, kit_source, cypilot_dir,
                 dry_run=args.dry_run,
@@ -1166,6 +1166,7 @@ def cmd_kit_update(argv: List[str]) -> int:
                 force=args.force,
                 source=github_source,
             )
+            # @cpt-end:cpt-cypilot-flow-kit-update-cli:p1:inst-legacy-migration
         except Exception as exc:
             kit_r = {"kit": kit_slug, "version": {"status": "ERROR"}, "gen": {}}
             errors.append(f"{kit_slug}: {exc}")
