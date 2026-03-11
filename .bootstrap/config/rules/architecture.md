@@ -11,17 +11,16 @@ version: 1.0
 
 <!-- toc -->
 
-- [Architecture](#architecture)
-  - [Source Layout](#source-layout)
-  - [Two-Package Design](#two-package-design)
-  - [Context Singleton](#context-singleton)
-  - [Path Resolution](#path-resolution)
-  - [Registry as Source of Truth](#registry-as-source-of-truth)
-  - [Architecture Patterns](#architecture-patterns)
-    - [Template-Centric Architecture](#template-centric-architecture)
-    - [Adaptive Workflow Model](#adaptive-workflow-model)
-    - [Kit Package Pattern](#kit-package-pattern)
-  - [Critical Files](#critical-files)
+- [Source Layout](#source-layout)
+- [Two-Package Design](#two-package-design)
+- [Context Singleton](#context-singleton)
+- [Path Resolution](#path-resolution)
+- [Registry as Source of Truth](#registry-as-source-of-truth)
+- [Architecture Patterns](#architecture-patterns)
+  - [Template-Centric Architecture](#template-centric-architecture)
+  - [Adaptive Workflow Model](#adaptive-workflow-model)
+  - [Kit Package Pattern](#kit-package-pattern)
+- [Critical Files](#critical-files)
 
 <!-- /toc -->
 
@@ -35,13 +34,13 @@ src/cypilot_proxy/          # Proxy package (5 files, ~875 LOC)
   resolve.py                # Skill target resolution (project → cache)
   cache.py                  # GitHub release download + extraction
 
-skills/cypilot/scripts/cypilot/   # Skill engine (~39 files)
+skills/cypilot/scripts/cypilot/   # Skill engine (~40 files)
   cli.py                    # Command dispatch (lazy imports per command)
   constants.py              # Shared regex patterns and constants
-  commands/                 # One module per CLI subcommand (17 modules)
-  utils/                    # Shared utility modules (16 modules)
+  commands/                 # One module per CLI subcommand (18 modules)
+  utils/                    # Shared utility modules (17 modules)
 
-tests/                      # 35 test modules, pytest + conftest
+tests/                      # 44 test modules, pytest + conftest
 ```
 
 ## Two-Package Design

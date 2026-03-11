@@ -53,6 +53,7 @@ _VERSION_TAGS: Dict[str, str] = {
     "v3.0.6-beta": "v3.0.6-beta",
     "v3.0.7-beta": "v3.0.7-beta",
     "v3.0.8-beta": "v3.0.8-beta",
+    "v3.0.9-beta": "v3.0.9-beta",
 }
 
 

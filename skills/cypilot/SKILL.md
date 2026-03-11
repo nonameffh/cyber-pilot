@@ -1,13 +1,13 @@
 ---
 name: cypilot
-description: "Invoke when user asks to do something with Cypilot, or wants to analyze/validate artifacts, or create/generate/implement anything using Cypilot workflows. Core capabilities: workflow routing (analyze/generate/auto-config); deterministic validation (structure, cross-refs, traceability, TOC); code↔artifact traceability with @cpt-* markers; spec coverage measurement; ID search/navigation; init/bootstrap; adapter + registry discovery; auto-configuration of brownfield projects (scan conventions, generate rules); kit management (install/update/migrate with three-way blueprint merge); TOC generation; agent integrations (Windsurf, Cursor, Claude, Copilot, OpenAI); v2→v3 migration."
+description: "Invoke when user asks to do something with Cypilot, or wants to analyze/validate artifacts, or create/generate/implement anything using Cypilot workflows. Core capabilities: workflow routing (analyze/generate/auto-config); deterministic validation (structure, cross-refs, traceability, TOC); code↔artifact traceability with @cpt-* markers; spec coverage measurement; ID search/navigation; init/bootstrap; adapter + registry discovery; auto-configuration of brownfield projects (scan conventions, generate rules); kit management (install/update with file-level diff); TOC generation; agent integrations (Windsurf, Cursor, Claude, Copilot, OpenAI)."
 ---
 
 # Cypilot Unified Tool
 
 ## Goal
 
-Cypilot provides: artifact validation, cross-reference validation, code traceability, spec coverage measurement, ID search/navigation, kit management (install/update/migrate with marker-level three-way merge), TOC generation/validation, multi-agent integration, v2→v3 migration, and design-to-code implementation with `@cpt-*` markers.
+Cypilot provides: artifact validation, cross-reference validation, code traceability, spec coverage measurement, ID search/navigation, kit management (install/update with file-level diff), TOC generation/validation, multi-agent integration, and design-to-code implementation with `@cpt-*` markers.
 
 ## Preconditions
 
@@ -201,7 +201,7 @@ Legacy aliases: `validate-code` (same behavior), `validate-rules` (alias for `va
 ```bash
 validate-kits [--kit <id>] [--template <path>] [--verbose]
 ```
-Validates kit configuration and blueprint integrity — template frontmatter, paired markers, valid marker types/attributes, constraints.
+Validates kit configuration — template frontmatter, constraints, resource paths.
 
 #### validate-toc
 ```bash
@@ -259,25 +259,13 @@ Finds all references to a Cypilot ID.
 ```bash
 kit install <source-path> [--dry-run] [--yes]
 ```
-Installs a kit from a source directory. Copies blueprints, scripts, and generates resources.
+Installs a kit from a source directory. Copies kit files to `config/kits/{slug}/`.
 
 #### kit update
 ```bash
-kit update [--kit <slug>] [--dry-run] [--yes]
+kit update [--kit <slug>] [--dry-run] [--yes] [--auto-approve]
 ```
-Updates kit reference copies from cache and regenerates `.gen/` outputs.
-
-#### kit migrate
-```bash
-kit migrate [--kit <slug>] [--dry-run] [--yes] [--no-interactive]
-```
-Marker-level three-way merge of kit blueprints when a new version is available. Interactive prompts allow per-marker accept/decline decisions for updates, insertions, deletions, and restorations.
-
-#### generate-resources
-```bash
-generate-resources [--kit <slug>] [--dry-run]
-```
-Regenerates `.gen/` outputs (templates, rules, checklists, examples, workflows, constraints, SKILL.md) from user blueprints.
+Updates kit files in `config/kits/{slug}/` with file-level diff. Interactive prompts for modified files: accept/decline/accept-all/decline-all.
 
 ### Utility Commands
 
@@ -303,7 +291,7 @@ Initializes Cypilot config directory (`.core/`, `.gen/`, `config/`) and root `AG
 ```bash
 update [--source <path>] [--force] [--dry-run]
 ```
-Updates `.core/` from cache, updates kit reference copies, regenerates `.gen/` from user blueprints, ensures `config/` scaffold.
+Updates `.core/` from cache, updates kit files in `config/kits/` with file-level diff, regenerates `.gen/` aggregates, ensures `config/` scaffold.
 
 #### agents
 ```bash

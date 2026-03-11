@@ -38,20 +38,25 @@ version: 1.0
 Cypilot is a workflow-centered methodology framework for AI-assisted software development with design-to-code traceability.
 
 ### Kit
-A **kit** is a package containing templates, rules, checklists, and examples for artifact validation. Located at `kits/{kit-id}/`.
+A **kit** is a direct file package containing templates, rules, checklists, examples, and workflows for artifact validation. Installed to `config/kits/{kit-id}/`.
 
 ```
-kits/sdlc/
+config/kits/sdlc/
+├── conf.toml             # Kit version metadata
+├── constraints.toml      # Validation constraints
+├── SKILL.md              # Kit skill entry point
+├── AGENTS.md             # Kit navigation rules
 ├── artifacts/
-│   ├── PRD/          # Product Requirements Document
-│   ├── DESIGN/       # Technical Design
-│   ├── DECOMPOSITION/     # Specs Manifest
-│   ├── FEATURE/      # Feature Design
-│   └── ADR/          # Architecture Decision Record
+│   ├── PRD/              # Product Requirements Document
+│   ├── DESIGN/           # Technical Design
+│   ├── DECOMPOSITION/    # Decomposition Manifest
+│   ├── FEATURE/          # Feature Design
+│   └── ADR/              # Architecture Decision Record
 ├── codebase/
 │   ├── rules.md
 │   └── checklist.md
-└── guides/
+├── workflows/            # Kit-specific workflows
+└── scripts/              # Kit scripts
 ```
 
 ### Adapter
@@ -151,9 +156,7 @@ Validates artifacts against templates and traceability rules.
 | `where-used` | Find all references to an ID |
 | `toc` | Generate/update Table of Contents in Markdown files |
 | `kit install` | Install a kit from source directory |
-| `kit update` | Update kit reference copies and regenerate outputs |
-| `kit migrate` | Three-way merge of kit blueprints for version upgrade |
-| `generate-resources` | Regenerate `.gen/` outputs from user blueprints |
+| `kit update` | Update kit files with file-level diff |
 | `agents` | Generate agent-specific workflow proxies (windsurf, cursor, claude, copilot, openai) |
 | `update` | Update `.core/` from cache, update kits, regenerate `.gen/` |
 | `migrate` | Migrate Cypilot v2 project to v3 layout |

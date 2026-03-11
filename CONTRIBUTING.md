@@ -3,30 +3,30 @@
 
 <!-- toc -->
 
-- [Prerequisites](#prerequisites)
-- [Development Setup](#development-setup)
-- [Project Architecture (Self-Hosted Bootstrap)](#project-architecture-self-hosted-bootstrap)
-  - [Critical Rule](#critical-rule)
-- [Versioning](#versioning)
-  - [Version Locations](#version-locations)
-  - [Releasing a New Version](#releasing-a-new-version)
-  - [Kit Versioning](#kit-versioning)
-- [Branch and Release Workflow](#branch-and-release-workflow)
-- [Commit Requirements (DCO)](#commit-requirements-dco)
-  - [How to sign off](#how-to-sign-off)
-  - [Retroactive sign-off](#retroactive-sign-off)
-  - [Why DCO?](#why-dco)
-- [CI Pipeline](#ci-pipeline)
-  - [Running CI Locally](#running-ci-locally)
-  - [Makefile Targets](#makefile-targets)
-  - [GitHub Actions](#github-actions)
-- [Making Changes](#making-changes)
-  - [Code Changes](#code-changes)
-  - [Architecture / Spec Changes](#architecture-spec-changes)
-  - [Kit Blueprint Changes](#kit-blueprint-changes)
-- [Pull Request Process](#pull-request-process)
-- [Code Style and Conventions](#code-style-and-conventions)
-- [Questions?](#questions)
+- [Contributing to Cypilot](#contributing-to-cypilot)
+  - [Thank you for your interest in contributing to Cypilot! This guide covers the development workflow, versioning scheme, bootstrap architecture, commit requirements, and CI pipeline.](#thank-you-for-your-interest-in-contributing-to-cypilot-this-guide-covers-the-development-workflow-versioning-scheme-bootstrap-architecture-commit-requirements-and-ci-pipeline)
+  - [Prerequisites](#prerequisites)
+  - [Development Setup](#development-setup)
+  - [Project Architecture (Self-Hosted Bootstrap)](#project-architecture-self-hosted-bootstrap)
+    - [Critical Rule](#critical-rule)
+  - [Versioning](#versioning)
+    - [Version Locations](#version-locations)
+    - [Releasing a New Version](#releasing-a-new-version)
+  - [Branch and Release Workflow](#branch-and-release-workflow)
+  - [Commit Requirements (DCO)](#commit-requirements-dco)
+    - [How to sign off](#how-to-sign-off)
+    - [Retroactive sign-off](#retroactive-sign-off)
+    - [Why DCO?](#why-dco)
+  - [CI Pipeline](#ci-pipeline)
+    - [Running CI Locally](#running-ci-locally)
+    - [Makefile Targets](#makefile-targets)
+    - [GitHub Actions](#github-actions)
+  - [Making Changes](#making-changes)
+    - [Code Changes](#code-changes)
+    - [Architecture / Spec Changes](#architecture--spec-changes)
+  - [Pull Request Process](#pull-request-process)
+  - [Code Style and Conventions](#code-style-and-conventions)
+  - [Questions?](#questions)
 
 <!-- /toc -->
 
@@ -69,16 +69,14 @@ Cypilot builds itself. The repo is simultaneously the **source code** and a **Cy
 ```
 cypilot/                          # Project root
 ├── skills/cypilot/               # CANONICAL source: skill engine + scripts
-├── kits/sdlc/                    # CANONICAL source: SDLC kit (blueprints, scripts, conf.toml)
 ├── src/cypilot_proxy/            # CANONICAL source: CLI proxy (thin shell)
 ├── schemas/                      # CANONICAL source: JSON schemas
 ├── architecture/                 # CANONICAL source: PRD, DESIGN, DECOMPOSITION, features
 ├── requirements/                 # CANONICAL source: checklists
 ├── .bootstrap/                   # Adapter directory (cypilot_path = ".bootstrap")
 │   ├── .core/                    #   READ-ONLY mirror of skills/, schemas/, architecture/, etc.
-│   ├── .gen/                     #   AUTO-GENERATED from config/kits/*/blueprints/
-│   ├── config/                   #   User-editable config (core.toml, artifacts.toml, blueprints)
-│   └── kits/sdlc/               #   Reference kit copies (for three-way merge)
+│   ├── .gen/                     #   AUTO-GENERATED aggregates (AGENTS.md, SKILL.md, README.md)
+│   └── config/                   #   User-editable config + kit outputs (core.toml, artifacts.toml, kits/)
 ├── tests/                        # Test suite
 └── Makefile                      # CI targets
 ```
@@ -91,14 +89,14 @@ cypilot/                          # Project root
 
 The `make update` command runs `cpt update --source . --force`, which:
 1. Copies canonical sources into `.bootstrap/.core/`
-2. Regenerates `.bootstrap/.gen/` from user blueprints in `.bootstrap/config/`
-3. Generated outputs are available in `.bootstrap/.gen/kits/sdlc/`
+2. Regenerates `.bootstrap/.gen/` aggregates
+3. Updates kit files in `.bootstrap/config/kits/`
 
 ---
 
 ## Versioning
 
-Cypilot has **three independent version tracks** plus kit-level versioning.
+Cypilot has **two independent version tracks**.
 
 ### Version Locations
 
@@ -107,7 +105,6 @@ Cypilot has **three independent version tracks** plus kit-level versioning.
 | `skills/cypilot/scripts/cypilot/__init__.py` | `v3.0.6-beta` | **Skill engine** — the core validation/generation logic | Any change to skill engine code |
 | `src/cypilot_proxy/__init__.py` | `v3.0.2-beta` | **CLI proxy** — the thin routing shell | Changes to proxy routing, caching, or resolution |
 | `pyproject.toml` (`version`) | `3.0.2-beta` | **PyPI package** — installed via `pipx` | Must match `src/cypilot_proxy/__init__.py` (without `v` prefix) |
-| `kits/sdlc/conf.toml` (`version`) | `2` | **Kit version** — integer, triggers three-way migration | Any blueprint or script change in the kit |
 
 ### Releasing a New Version
 
@@ -132,38 +129,23 @@ Cypilot has **three independent version tracks** plus kit-level versioning.
    version = "3.0.6-beta"   # same value, no 'v' prefix
    ```
 
-4. **If kit changed**, bump the integer version in `kits/sdlc/conf.toml`:
-   ```toml
-   version = 3
-   ```
-
-5. **Sync bootstrap**:
+4. **Sync bootstrap**:
    ```bash
    make update
    ```
 
-6. **Verify** everything passes:
+5. **Verify** everything passes:
    ```bash
    make test
    make validate
    make self-check
    ```
 
-7. **Tag and release** after merge to `main`:
+6. **Tag and release** after merge to `main`:
    ```bash
    git tag v3.0.6-beta
    git push origin v3.0.6-beta
    ```
-
-### Kit Versioning
-
-Kit versions are **integers** (not semver) stored in `kits/{slug}/conf.toml`. A version bump triggers automatic **three-way merge** migration of user blueprints during `cpt update`:
-
-- **Same version** → skip, don't touch user blueprints
-- **Higher version** → run `migrate_kit` (marker-level three-way merge preserving user customizations)
-- **Missing** → first install (copy from reference)
-
-There are no per-blueprint versions — the single kit-level version in `conf.toml` controls all migration.
 
 ---
 
@@ -189,7 +171,7 @@ All commits **must** include a `Signed-off-by` line — the [Developer Certifica
 
 ```bash
 # Every commit must use -s
-git commit -s -m "feat(kit): add three-way merge for blueprint migration"
+git commit -s -m "feat(validate): add cross-reference checking"
 ```
 
 This appends:
@@ -258,16 +240,17 @@ All CI is driven through `make`. No virtual environment required — tools run v
 
 ### GitHub Actions
 
-CI runs on every push to `main` and every PR targeting `main`. Six parallel jobs:
+CI runs on every push to `main` and every PR targeting `main`. Seven parallel jobs:
 
 1. **Test** — `make test` on Python 3.11, 3.12, 3.13, 3.14
 2. **Coverage** — `make test-coverage` on Python 3.14 (≥90% gate)
 3. **Vulture** — `make vulture-ci` dead code scan
-4. **Versions** — `make check-versions` (proxy sync, bootstrap sync, kit version bumps)
+4. **Versions** — `make check-versions` (proxy sync, bootstrap sync)
 5. **Spec Coverage** — `make spec-coverage` (≥80% overall, ≥70% per file)
 6. **Validate** — `make validate` + `make self-check` on Python 3.11–3.14
+7. **Validate Kits** — `make validate-kits` on Python 3.11–3.14
 
-All six must pass before merge.
+All seven must pass before merge.
 
 ---
 
@@ -286,13 +269,6 @@ All six must pass before merge.
 2. If adding new CDSL entries, run `cpt toc <file>` to regenerate the table of contents
 3. If adding `@cpt-*` code markers, run `cpt validate` to verify traceability (138/138 coverage)
 4. Verify: `make validate`
-
-### Kit Blueprint Changes
-
-1. Edit blueprints in `kits/sdlc/blueprints/`
-2. Bump `version` in `kits/sdlc/conf.toml`
-3. Run `make update` to regenerate `.gen/` and sync example outputs
-4. Verify: `make validate && make self-check`
 
 ---
 

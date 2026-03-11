@@ -12,9 +12,9 @@ version: 1.0
 <!-- toc -->
 
 - [Languages](#languages)
-- [Frameworks & Libraries](#frameworks-libraries)
+- [Frameworks & Libraries](#frameworks--libraries)
 - [Testing](#testing)
-- [Build & Development](#build-development)
+- [Build & Development](#build--development)
 - [Code Quality](#code-quality)
 
 <!-- /toc -->
@@ -33,8 +33,7 @@ Zero third-party runtime dependencies — stdlib only:
 - **json** — Data serialization
 - **re** — Regex-based parsing
 - **tomllib** — TOML config parsing (stdlib, Python 3.11+)
-- **hashlib** — Blueprint hash computation
-- **difflib** — Three-way merge for kit migration
+- **difflib** — File-level diff for kit updates
 
 ## Testing
 

@@ -33,16 +33,14 @@ version: 1.0
 │   │   ├── AGENTS.md
 │   │   ├── SKILL.md
 │   │   └── README.md
-│   ├── config/               # User-editable configuration + generated kit outputs
+│   ├── config/               # User-editable configuration + kit outputs
 │   │   ├── AGENTS.md         # Custom navigation rules
 │   │   ├── SKILL.md          # Custom skill extensions
 │   │   ├── core.toml         # Project config
 │   │   ├── artifacts.toml    # Artifacts registry
 │   │   ├── rules/            # Project rules (per-topic, auto-config)
-│   │   └── kits/sdlc/        # Generated kit outputs (constraints, artifacts/, scripts/)
-│   └── kits/sdlc/            # User-editable kit data
-│       ├── blueprints/       # User-editable blueprints
-│       └── conf.toml         # Kit version metadata
+│   │   └── kits/sdlc/        # Kit files (artifacts/, codebase/, workflows/, scripts/)
+│   │       └── conf.toml     # Kit version metadata
 │
 ├── .github/
 │   └── workflows/ci.yml      # GitHub Actions CI (single source of truth)
@@ -60,12 +58,8 @@ version: 1.0
 │   ├── features/             # Feature specs
 │   └── specs/                # Technical specs (CDSL, CLISPEC, etc.)
 │
-├── kits/                     # Kit packages (canonical source)
-│   └── sdlc/
-│       ├── blueprints/
-│       ├── guides/
-│       ├── scripts/
-│       └── blueprint_hashes.toml
+├── kits/                     # Kit packages (canonical source, NOT used in self-hosted)
+│   └── sdlc/                 # Note: self-hosted uses cyber-pilot-kit-sdlc repo directly
 │
 ├── skills/                   # Cypilot skills (canonical source)
 │   └── cypilot/
@@ -78,7 +72,7 @@ version: 1.0
 │       ├── resolve.py
 │       └── cache.py
 │
-├── tests/                    # Test suite (35 test modules)
+├── tests/                    # Test suite (44 test modules)
 │   ├── test_*.py
 │   ├── conftest.py
 │   └── _test_helpers.py
@@ -103,26 +97,43 @@ skills/cypilot/scripts/cypilot/
 ├── cli.py                   # Main CLI — command dispatch only
 ├── constants.py             # Shared constants and regex patterns
 │
-├── commands/                # One module per CLI subcommand
-│   ├── validate.py
-│   ├── init.py
-│   ├── adapter_info.py
-│   ├── agents.py
-│   ├── toc.py
-│   └── ...
+├── commands/                # One module per CLI subcommand (18 modules)
+│   ├── adapter_info.py      # info command
+│   ├── agents.py            # agents command (multi-agent integration)
+│   ├── get_content.py       # get-content command
+│   ├── init.py              # init command
+│   ├── kit.py               # kit install/update commands
+│   ├── list_id_kinds.py     # list-id-kinds command
+│   ├── list_ids.py          # list-ids command
+│   ├── migrate.py           # migrate/migrate-config commands
+│   ├── self_check.py        # self-check command
+│   ├── spec_coverage.py     # spec-coverage command
+│   ├── toc.py               # toc command
+│   ├── update.py            # update command
+│   ├── validate.py          # validate command
+│   ├── validate_kits.py     # validate-kits command
+│   ├── validate_toc.py      # validate-toc command
+│   ├── where_defined.py     # where-defined command
+│   └── where_used.py        # where-used command
 │
-└── utils/                   # Shared utility modules
+└── utils/                   # Shared utility modules (17 modules)
     ├── __init__.py          # Re-exports all utilities
     ├── artifacts_meta.py    # artifacts.toml parsing → ArtifactsMeta
     ├── codebase.py          # Code file parsing → CodeFile, ScopeMarker
     ├── constraints.py       # constraints.toml parsing → KitConstraints
     ├── context.py           # CypilotContext singleton
+    ├── coverage.py          # Spec coverage calculation
+    ├── diff_engine.py       # File-level diff for kit updates
     ├── document.py          # Document utilities
+    ├── error_codes.py       # Validation error codes
     ├── files.py             # File operations, project root discovery
+    ├── fixing.py            # Auto-fix suggestions
     ├── language_config.py   # Language-specific configs
+    ├── manifest.py          # Kit manifest parsing
     ├── parsing.py           # Markdown parsing, section splitting
     ├── toc.py               # Table of Contents generation
-    └── toml_utils.py        # TOML read/write helpers (stdlib tomllib)
+    ├── toml_utils.py        # TOML read/write helpers (stdlib tomllib)
+    └── ui.py                # Terminal UI helpers
 ```
 
 ## Kit Package Structure
